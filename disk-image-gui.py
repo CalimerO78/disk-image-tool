@@ -964,12 +964,11 @@ class App(tk.Tk):
         if kind in {"read", "verify"}:
             if self.source_size > 0 and isinstance(data.get("bytes"), (int, float)):
                 percent = 100 * data["bytes"] / self.source_size
-            if isinstance(data.get("rate"), (int, float)):
-                self.read_rate = data["rate"]
+            self.read_rate = data.get("rate") if isinstance(data.get("rate"), (int, float)) else None
             if kind == "verify":
                 self.write_rate = None
-        elif kind == "write" and isinstance(data.get("rate"), (int, float)):
-            self.write_rate = data["rate"]
+        elif kind == "write":
+            self.write_rate = data.get("rate") if isinstance(data.get("rate"), (int, float)) else None
         elif kind in {"ddrescue", "fsarchiver"}:
             self.read_rate = data.get("read_bps") if isinstance(data.get("read_bps"), (int, float)) else None
             self.write_rate = data.get("write_bps") if isinstance(data.get("write_bps"), (int, float)) else None

@@ -3,6 +3,7 @@
 import tempfile
 import shutil
 import subprocess
+import time
 import unittest
 from pathlib import Path
 
@@ -12,15 +13,23 @@ from disk_image_progress import archive_percent, rescued_percent
 class ProgressTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("pv"), "pv ist lokal nicht installiert")
     def test_pv_emits_machine_readable_bytes_and_rate(self):
-        result = subprocess.run(
-            ["pv", "-n", "-b", "-r", "-s", "4"],
-            input=b"abcd", capture_output=True, check=True,
+        process = subprocess.Popen(
+            ["pv", "-n", "-b", "-r", "-i", "0.2", "-s", "4"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        lines = result.stderr.decode().splitlines()
-        self.assertTrue(lines, result.stderr)
-        bytes_done, rate = lines[-1].split()
-        self.assertEqual(int(bytes_done), 4)
-        self.assertGreaterEqual(float(rate), 0)
+        assert process.stdin is not None
+        process.stdin.write(b"ab")
+        process.stdin.flush()
+        time.sleep(0.35)
+        output, errors = process.communicate(b"cd", timeout=5)
+        self.assertEqual(process.returncode, 0, errors)
+        self.assertEqual(output, b"abcd")
+        lines = errors.decode().splitlines()
+        self.assertTrue(lines, errors)
+        self.assertEqual(int(lines[-1].split()[0]), 4)
+        rates = [float(parts[1]) for line in lines
+                 if len(parts := line.split()) == 2]
+        self.assertTrue(rates, lines)
 
     def test_ddrescue_map_counts_only_rescued_ranges(self):
         with tempfile.TemporaryDirectory() as directory:

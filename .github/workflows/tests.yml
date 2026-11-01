@@ -1,0 +1,19 @@
+name: Linux-Prüfung
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax-und-gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tkinter und virtuellen Bildschirm installieren
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: Bash-Syntax und CLI-Hilfe prüfen
+        run: |
+          bash -n disk-image.sh
+          bash disk-image.sh --help >/dev/null
+      - name: GUI und Mail-Übergabe prüfen
+        run: xvfb-run -a python3 -m unittest -v test_gui.py

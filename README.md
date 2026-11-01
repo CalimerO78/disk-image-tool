@@ -14,6 +14,58 @@ Das Skript läuft unter Linux mit Root-Rechten. Es bietet drei Sicherungsarten:
 
 `fsarchiver` ist kein Ersatz für ein vollständiges Abbild: Partitionstabelle und nicht belegte Blöcke gehören nicht zum Archiv. Welche Dateisysteme unterstützt werden, hängt von der installierten Version und den Dateisystemwerkzeugen ab.
 
+## Grafische Oberfläche (Linux)
+
+Die grafische Oberfläche ist ein zusätzlicher Startweg. Die bisherige interaktive
+Kommandozeile und alle Parameter bleiben verfügbar. Die GUI übergibt die gewählten
+Einstellungen an `disk-image.sh`; beide Wege erzeugen dasselbe Sicherungsformat.
+
+### Von GitHub installieren und starten (Debian/Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install git python3 python3-tk pkexec
+git clone https://github.com/CalimerO78/disk-image-tool.git
+cd disk-image-tool
+python3 disk-image-gui.py
+```
+
+Die grafische Administrator-Abfrage benötigt einen laufenden Polkit-Agenten in
+der Desktop-Sitzung. Die Sicherung selbst fragt nach der Bestätigung nach
+Administratorrechten. Für die CLI im selben Ordner:
+
+```bash
+sudo bash disk-image.sh
+```
+
+Die benötigten Sicherungsprogramme bietet das Skript beim Start zur Installation
+an; in der GUI ist die automatische Installation standardmäßig aktiviert.
+
+Benötigt werden Python 3 mit Tkinter, `lsblk` und für eine grafische
+Administrator-Anmeldung `pkexec` mit einem laufenden Polkit-Agenten. Unter
+Debian/Ubuntu lässt sich Tkinter bei Bedarf mit `sudo apt install python3-tk`
+installieren. Danach im Ordner mit `disk-image.sh`, `disk-image-gui.py`,
+`disk-image-runner.py` und `disk-image-mail.py` starten:
+
+```bash
+python3 disk-image-gui.py
+```
+
+In der Oberfläche zuerst Sicherungsart, Quelle und vorhandenen Zielordner wählen.
+Unter **Weitere Optionen** sind Kompression, Fortsetzung mit ddrescue,
+age-Verschlüsselung mit einer Erklärung der Schlüssel, SSH-Kopie, SMART,
+Verifikation und die automatische Paketinstallation erreichbar. Der eigene
+Reiter **E-Mail** bietet das lokale Mailprogramm oder eine direkte SMTP-Verbindung
+mit STARTTLS beziehungsweise SSL/TLS, Empfängeradresse und Testmail. Im vierten Reiter die Angaben prüfen
+und den Start bestätigen. Die Administrator-Abfrage erscheint erst beim Start.
+Die Quelle wird kurz vor dem eigentlichen Lesen im Skript erneut geprüft.
+
+Die GUI zeigt den laufenden Status und die Skriptausgabe. Einige Werkzeuge
+schreiben ausführliche Fortschrittsdaten nur in die Protokolldatei; deshalb
+läuft währenddessen eine Aktivitätsanzeige. **Unterbrechen** erhält ein bereits
+angefangenes Abbild zur Diagnose. Ein vollständiger Linux-Hardwaretest der GUI
+steht noch aus.
+
 ## Interaktiver Start
 
 ```bash
@@ -79,7 +131,7 @@ Zuerst entsteht ein **lokales** Abbild; danach wird es über SSH übertragen. Au
 
 ## Benachrichtigung und Cron
 
-`--notify desktop` nutzt `notify-send`; bei Ausführung mit `sudo` kann die Desktop-Sitzung fehlen. `--notify mail --mail-to name@example.org` nutzt das lokal eingerichtete Mailprogramm. Benachrichtigungen enthalten den Status und lokale Pfade, keine Schlüssel.
+`--notify desktop` nutzt `notify-send`; bei Ausführung mit `sudo` kann die Desktop-Sitzung fehlen. `--notify mail --mail-to name@example.org` nutzt das lokal eingerichtete Mailprogramm. Mit `--mail-config /absoluter/pfad/mail.json` nutzt derselbe CLI-Aufruf stattdessen die in der GUI gespeicherte SMTP-Verbindung. Benachrichtigungen enthalten den Status und lokale Pfade, keine Schlüssel. Die [Schritt-für-Schritt-Anleitung](disk-image-Handbuch.md#15-e-mail-einrichten-schritt-f%C3%BCr-schritt) erklärt beide Versandwege.
 
 Für Cron `--non-interactive` verwenden und `--engine`, `--source`, `--dest` und `--mounted` ausdrücklich angeben. Ohne `--auto-install` installiert ein Cron-Lauf keine Pakete. Für SSH muss die Anmeldung ohne Rückfrage funktionieren. Ein Beispiel:
 

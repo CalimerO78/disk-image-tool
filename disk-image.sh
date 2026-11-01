@@ -39,6 +39,7 @@ SSH_PATH=""
 NOTIFY_MODE=none
 NOTIFY_SPECIFIED=0
 MAIL_TO=""
+MAIL_CONFIG=""
 NON_INTERACTIVE=0
 AUTO_INSTALL=0
 VERIFY_MODE=""
@@ -68,6 +69,8 @@ Ohne Optionen führt das Skript durch die Auswahl. Für Cron sind
 --ssh-path /ziel/datei            Exakter Dateipfad auf dem SSH-Ziel
 --notify none|desktop|mail        Benachrichtigung nach Abschluss
 --mail-to ADRESSE                 Empfänger für --notify mail
+--mail-config DATEI               SMTP-Konfiguration statt lokalem mail-Programm;
+                                 nur für --notify mail (Dateirechte 600)
 --smart show|skip                 SMART-Kurzstatus anzeigen oder auslassen
 --verify | --no-verify            Gespeichertes Abbild prüfen oder überspringen
 --non-interactive                 Keine Rückfragen; fehlende Angaben sind Fehler
@@ -87,7 +90,7 @@ while (( $# > 0 )); do
         --auto-install) AUTO_INSTALL=1; shift ;;
         --verify) VERIFY_MODE=yes; shift ;;
         --no-verify) VERIFY_MODE=no; shift ;;
-        --engine|--source|--dest|--compression|--on-read-error|--mounted|--resume-image|--age-recipient|--age-identity|--ssh-host|--ssh-path|--notify|--mail-to|--smart)
+        --engine|--source|--dest|--compression|--on-read-error|--mounted|--resume-image|--age-recipient|--age-identity|--ssh-host|--ssh-path|--notify|--mail-to|--mail-config|--smart)
             (( $# >= 2 )) || die "Wert fehlt für $1"
             case "$1" in
                 --engine) ENGINE="$2" ;; --source) CLI_SOURCE="$2" ;;
@@ -96,7 +99,8 @@ while (( $# > 0 )); do
                 --resume-image) RESUME_IMAGE="$2" ;; --age-recipient) AGE_RECIPIENT="$2" ;;
                 --age-identity) AGE_IDENTITY="$2" ;; --ssh-host) SSH_HOST="$2" ;;
                 --ssh-path) SSH_PATH="$2" ;; --notify) NOTIFY_MODE="$2" ;;
-                --mail-to) MAIL_TO="$2" ;; --smart) SMART_MODE="$2" ;;
+                --mail-to) MAIL_TO="$2" ;; --mail-config) MAIL_CONFIG="$2" ;;
+                --smart) SMART_MODE="$2" ;;
             esac
             [[ "$1" != --notify ]] || NOTIFY_SPECIFIED=1
             shift 2 ;;
@@ -146,6 +150,11 @@ cleanup() {
         if [[ "$NOTIFY_MODE" == desktop ]]; then
             notify-send 'Datenträgersicherung' "Beendet mit Status $exit_status: $SRC" \
                 || printf 'WARNUNG: Desktop-Benachrichtigung fehlgeschlagen.\n' >&2
+        elif [[ "$NOTIFY_MODE" == mail && -n "$MAIL_CONFIG" ]]; then
+            python3 "$(dirname -- "${BASH_SOURCE[0]}")/disk-image-mail.py" \
+                --config "$MAIL_CONFIG" --to "$MAIL_TO" \
+                --status "$exit_status" --source "$SRC" --image "$IMG" --log "$LOG" \
+                || printf 'WARNUNG: SMTP-Benachrichtigung fehlgeschlagen.\n' >&2
         elif [[ "$NOTIFY_MODE" == mail ]]; then
             printf 'Sicherung von %s beendet. Status: %s\nAbbild: %s\nProtokoll: %s\n' \
                 "$SRC" "$exit_status" "$IMG" "$LOG" \
@@ -202,6 +211,14 @@ case "$MOUNT_ACTION" in ''|unmount|allow|abort) ;; *) die "--mounted muss unmoun
 if [[ "$NOTIFY_MODE" == mail ]]; then
     [[ "$MAIL_TO" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "Für Mail ist --mail-to mit gültiger Adresse nötig."
 fi
+if [[ -n "$MAIL_CONFIG" ]]; then
+    [[ "$NOTIFY_MODE" == mail && "$MAIL_CONFIG" == /* ]] \
+        || die "--mail-config benötigt --notify mail und einen absoluten Dateipfad."
+    command -v python3 >/dev/null 2>&1 || die "Für SMTP wird Python 3 benötigt."
+    python3 "$(dirname -- "${BASH_SOURCE[0]}")/disk-image-mail.py" \
+        --config "$MAIL_CONFIG" --check >/dev/null \
+        || die "SMTP-Konfiguration fehlt, ist ungültig oder nicht geschützt."
+fi
 if [[ -n "$SSH_HOST" || -n "$SSH_PATH" ]]; then
     [[ "$SSH_HOST" =~ ^[A-Za-z_][A-Za-z0-9_.-]*@[A-Za-z0-9_.-]+$ && "$SSH_PATH" =~ ^/[A-Za-z0-9_./-]+$ ]] \
         || die "Für SSH sind --ssh-host BENUTZER@HOST und --ssh-path /absoluter/pfad nötig."
@@ -230,7 +247,8 @@ check_prerequisites() {
     esac
     [[ -z "$AGE_RECIPIENT" ]] || required+=(age)
     [[ -z "$SSH_HOST" ]] || required+=(ssh)
-    case "$NOTIFY_MODE" in desktop) required+=(notify-send) ;; mail) required+=(mail) ;; esac
+    case "$NOTIFY_MODE" in desktop) required+=(notify-send) ;;
+        mail) [[ -n "$MAIL_CONFIG" ]] || required+=(mail) ;; esac
 
     for tool in "${required[@]}"; do
         command -v "$tool" >/dev/null 2>&1 && continue

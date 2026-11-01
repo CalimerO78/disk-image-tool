@@ -1,6 +1,6 @@
 # Handbuch für disk-image.sh
 
-**Stand: 31. Oktober 2026**
+**Stand: 1. November 2026**
 
 `disk-image.sh` sichert Linux-Datenträger oder einzelne Partitionen in Dateien. Es führt im Terminal durch die nötigen Entscheidungen und kann mit festen Parametern ohne Rückfragen laufen. Dieses Handbuch erklärt, welcher Modus für welchen Zweck passt, wie die erzeugten Dateien geprüft werden und was bei einer Unterbrechung zu tun ist.
 
@@ -118,6 +118,13 @@ Das `.fsa`-Archiv hat ein eigenes Format und ist kein Rohabbild. `fsarchiver` ko
 
 Für `age` wird ein **öffentlicher Empfängerschlüssel** benötigt. Nur mit der passenden privaten Identitätsdatei lässt sich das Abbild entschlüsseln. Den privaten Schlüssel getrennt vom Abbild sicher aufbewahren; ein verlorener Schlüssel kann die Wiederherstellung unmöglich machen. [Die age-Dokumentation](https://github.com/FiloSottile/age/blob/main/README.md?plain=1) beschreibt Empfänger und Identitätsdateien.
 
+Schlüssel für die GUI oder CLI vorbereiten:
+
+1. Falls `age-keygen` fehlt, auf Debian/Ubuntu `sudo apt install age` ausführen.
+2. `age-keygen -o mein-age-schluessel.txt` starten. Die Datei enthält den **privaten** Schlüssel; die Ausgabe `Public key: age1...` ist der **öffentliche** Schlüssel.
+3. Die private Datei so aufbewahren, dass nur Berechtigte sie lesen können, und getrennt vom Abbild sichern. Den öffentlichen Schlüssel in der GUI ins obere age-Feld kopieren. Bei aktivierter Inhaltsprüfung die private Datei im unteren Feld auswählen.
+4. Eine Testverschlüsselung durchführen und später mit `age -d -i mein-age-schluessel.txt DATEI.age > entschluesselte-datei` prüfen, ob sich eine Datei wieder öffnen lässt. Dafür genügend freien Platz einplanen.
+
 ```bash
 sudo bash disk-image.sh --non-interactive --engine dd \
   --source /dev/sdb --dest /backup --mounted abort \
@@ -146,6 +153,8 @@ Ein unverschlüsseltes Rohabbild liegt auf dem SSH-Ziel unverschlüsselt vor. So
 Mit `--notify desktop` versucht das Skript am Ende `notify-send` aufzurufen. Da das Skript mit `sudo` läuft, kann die grafische Sitzung für Root unerreichbar sein. Eine Meldung im Terminal weist dann auf den fehlgeschlagenen Benachrichtigungsversuch hin.
 
 Mit `--notify mail --mail-to name@example.org` sendet das lokale Mailprogramm den Exit-Code sowie Quell-, Abbild- und Protokollpfad. Dafür ist eine funktionierende Mailzustellung nötig; `bsd-mailx` allein richtet keinen externen SMTP-Dienst ein. Die Benachrichtigung wird auch bei einem Fehler während des Sicherungslaufs versucht. Der Erfolg der Benachrichtigung ändert den Exit-Code der Sicherung nicht.
+
+Mit `--mail-config /absoluter/pfad/mail.json` wird stattdessen direkt über SMTP mit STARTTLS oder SSL/TLS versendet. Die Konfiguration kann im GUI-Reiter **E-Mail** gespeichert werden. Sie enthält das SMTP-Passwort in einer lokalen Datei mit Zugriffsrechten `600`; diese Datei gehört weder in das Sicherungsziel noch in ein öffentliches Repository. Das Passwort erscheint nicht in den Kommandozeilenparametern.
 
 ## 10. Ohne Rückfragen und mit Cron arbeiten
 
@@ -221,3 +230,60 @@ Bei interaktiver Nutzung werden nicht gesetzte Optionen abgefragt. Eine nicht un
 Eine Wiederherstellung überschreibt das gewählte Zielgerät. Vorher das Backup mit `sha256sum -c` prüfen, den Inhaltstyp feststellen und das Ziel mit `lsblk` eindeutig identifizieren. Die Zielpartitionen müssen ausgehängt sein. Für `dd`- und `ddrescue`-Abbilder muss das Ziel ausreichend groß sein. `fsarchiver` stellt eine gespeicherte Partition mit `restfs` wieder her; die genaue Zielpartition ist dabei ausdrücklich anzugeben. Die [FSArchiver-Anleitung](https://www.fsarchiver.org/quickstart/) enthält die Syntax für `restfs`.
 
 Der konkrete Wiederherstellungsbefehl hängt von Format, Verschlüsselung und Zielgerät ab. Das Skript führt selbst **keine** Wiederherstellung aus. Ein Test auf einem geeigneten Ersatzdatenträger ist die aussagekräftigste Prüfung, ob sich die gesicherten Daten wirklich nutzen lassen.
+
+## 14. Grafische Bedienung unter Linux
+
+Zusätzlich zum Terminal steht `disk-image-gui.py` bereit. Starten Sie es mit
+`python3 disk-image-gui.py` im Ordner der Skripte einschließlich
+`disk-image-runner.py` und `disk-image-mail.py`. Python 3 und Tkinter sind
+erforderlich; auf Debian/Ubuntu kann Tkinter mit `sudo apt install python3-tk`
+nachinstalliert werden. Für die Administrator-Abfrage benötigt die Sitzung
+`pkexec` und einen Polkit-Agenten. Alternativ kann die Oberfläche als root
+gestartet werden; dabei funktionieren Desktop-Benachrichtigungen je nach Sitzung
+gegebenenfalls nicht.
+
+1. **Quelle und Ziel:** Sicherungsart wählen. `dd` und `ddrescue` zeigen ganze
+   Datenträger; `fsarchiver` zeigt Partitionen. Den vorhandenen lokalen
+   Zielordner wählen. Bei eingehängter Quelle ist Abbrechen der Standard;
+   optional kann vor dem Sichern ausgehängt werden.
+2. **Weitere Optionen:** Bei `dd` Kompression und Lesefehlerverhalten einstellen.
+   Mit `ddrescue` kann ein Abbild fortgesetzt werden, wenn die zugehörige
+   `.map`-Datei vorhanden ist. Für `dd` kann age-Verschlüsselung aktiviert werden:
+   Ins obere Feld kommt der öffentliche Empfängerschlüssel, ins untere bei
+   aktivierter Inhaltsprüfung die private Identitätsdatei. **age erklären**
+   beschreibt die Schlüssel und ihre Erzeugung. Weitere Felder steuern SSH-Kopie,
+   SMART-Anzeige, Verifikation und die automatische Installation fehlender
+   Pakete. Diese ist standardmäßig eingeschaltet.
+3. **E-Mail:** Benachrichtigungsart und Empfängeradresse wählen. Der Versandweg
+   kann das lokale `mail`-Programm oder eine direkte SMTP-Verbindung sein.
+   Die Anleitung im nächsten Abschnitt führt durch beide Einstellungen.
+4. **Prüfen und starten:** Zusammenfassung lesen und den Start bestätigen.
+   Erst dann wird nach Administratorrechten gefragt. Die Oberfläche zeigt
+   Meldungen und einen Aktivitätsbalken. Die ausführliche Protokolldatei liegt
+   im Zielordner. Beim Unterbrechen bleibt ein begonnenes Abbild erhalten.
+
+Die GUI nutzt denselben nicht interaktiven CLI-Modus, der auch für Cron geeignet
+ist. Der Terminal-Aufruf `sudo bash disk-image.sh` und alle CLI-Parameter stehen
+unabhängig von der GUI weiter zur Verfügung. Die GUI ist für Linux vorgesehen;
+ein vollständiger Test mit realen Datenträgern steht noch aus.
+
+## 15. E-Mail einrichten: Schritt für Schritt
+
+### Möglichkeit A: Lokales Mailprogramm
+
+1. Im GUI-Reiter **E-Mail** bei **Nach der Sicherung** „E-Mail“ wählen und die Empfängeradresse eintragen.
+2. Als **Versandweg** „Lokales Mailprogramm“ wählen und **Mailprogramm prüfen** anklicken. Fehlt das Programm, auf Debian/Ubuntu `sudo apt install bsd-mailx` ausführen. Die GUI kann es für einen Sicherungslauf auch über die aktivierte Paketinstallation nachinstallieren.
+3. Einen Mail-Transport auf dem Linux-Rechner einrichten. Das konkrete Vorgehen hängt von Distribution und Mail-Anbieter ab; `mail` allein stellt keine SMTP-Verbindung bereit. Für einen bereits eingerichteten System-Mail-Transport sind in der GUI keine Zugangsdaten nötig.
+4. **Testmail senden** anklicken und anschließend den Posteingang sowie gegebenenfalls den Spam-Ordner kontrollieren. Erst der tatsächliche Eingang bestätigt die Zustellung.
+5. Im vierten Reiter den Versandweg prüfen und die Sicherung starten. Auf der CLI `--notify mail --mail-to ADRESSE` verwenden.
+
+### Möglichkeit B: SMTP direkt
+
+1. Vom Mail-Anbieter Servername, Port, Verbindungstyp (**STARTTLS** oder **SSL/TLS**), Absenderadresse, Benutzername und gegebenenfalls ein App-Passwort beschaffen. Nur die vom Anbieter genannten Werte verwenden; Port 587 mit STARTTLS ist eine Voreinstellung der GUI, keine allgemeine Zusage für jeden Anbieter.
+2. Im GUI-Reiter **E-Mail** „E-Mail“ und „SMTP direkt“ wählen. Empfängeradresse und SMTP-Felder ausfüllen. Benutzername und Passwort entweder beide eintragen oder beide leer lassen, falls der Server ausdrücklich keine Anmeldung benötigt.
+3. **SMTP-Einstellungen speichern** anklicken und die Speicherung bestätigen. Die Datei liegt unter `~/.config/disk-image-tool/mail.json`, ist nur für ihren Besitzer lesbar (`chmod 600`) und enthält das Passwort im Klartext. Die Datei nicht weitergeben, nicht in Git einchecken und aus Backups mit breitem Zugriff ausschließen.
+4. **Testmail senden** anklicken. Bei Fehlern die Angaben und die Erreichbarkeit des Servers prüfen. Danach im Posteingang kontrollieren, ob die Nachricht tatsächlich zugestellt wurde.
+5. Für einen CLI- oder Cron-Lauf zusätzlich zu `--notify mail --mail-to ADRESSE` den absoluten Pfad mit `--mail-config /home/BENUTZER/.config/disk-image-tool/mail.json` angeben. Root muss diese Datei lesen können. Der CLI-Modus prüft Format und Dateirechte vor der Sicherung und sendet erst nach dem Lauf.
+
+Die Testmail aus der GUI läuft mit dem angemeldeten Benutzer. Die Sicherungsbenachrichtigung läuft mit Administratorrechten; deshalb kann sich der lokale Mailversand zwischen Test und Sicherung unterscheiden. SMTP nutzt in beiden Fällen dieselbe Konfigurationsdatei. Weder eine erfolgreiche SMTP-Übergabe noch ein Exit-Code 0 des lokalen Mailprogramms beweist die spätere Zustellung.
+

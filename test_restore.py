@@ -74,7 +74,7 @@ class RestoreTests(unittest.TestCase):
     def test_device_plan_rejects_mounted_target_and_small_target(self):
         target = Path("/dev/sdz")
         image = Path("/backup/image.img")
-        def fake_stat(path):
+        def fake_stat(path, **_kwargs):
             if str(path) == str(image):
                 return SimpleNamespace(st_dev=999999)
             return SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=2048)

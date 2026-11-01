@@ -1,6 +1,6 @@
 # Datenträger sichern mit `disk-image.sh`
 
-**Öffentliche Vorabversion:** Die Bash-Syntax und die Hilfeausgabe wurden geprüft. Ein vollständiger Sicherungs- und Wiederherstellungslauf auf Linux-Hardware ist noch nicht verifiziert. Vor produktiver Nutzung mit einem entbehrlichen Testdatenträger erproben.
+**Teststand:** Das Erstellen eines Images wurde vom Projektinhaber unter Linux getestet und freigegeben. Die genaue Testkonfiguration ist nicht dokumentiert. Das Zurückspielen, Entpacken und Herauskopieren einzelner Dateien ist noch nicht auf Linux-Hardware verifiziert; dafür zunächst einen entbehrlichen Testdatenträger verwenden.
 
 Ausführliche Erklärungen, Parameter und Fehlerbehebung stehen im [deutschen Handbuch](disk-image-Handbuch.md).
 
@@ -189,6 +189,42 @@ sudo bash disk-image.sh --non-interactive --engine dd \
 `--mounted abort` verhindert einen unbeaufsichtigten Lauf mit eingehängter Quelle. `--mounted unmount` hängt die erkannten Dateisysteme ausdrücklich aus; `--mounted allow` gestattet bei `dd` und `ddrescue` ein möglicherweise inkonsistentes Abbild.
 
 ## Ergebnisse und Grenzen
+
+### Wiederherstellen und Dateien herauskopieren (Vorschau)
+
+Der Reiter **Wiederherstellen** öffnet einen Dialog zum Prüfen, Entpacken,
+Zurückspielen und Herauskopieren einzelner Dateien. Rohabbilder (`.img`,
+`.img.gz`, `.img.zst`, auch mit `.age`) werden nur auf eine **ganze Platte**
+geschrieben, die mindestens so groß ist wie das entpackte Original. Ein
+`.fsa`-Archiv wird auf eine **Partition** zurückgespielt, die mindestens die
+ursprüngliche Dateisystemgröße hat. Das Programm hängt keine Ziele automatisch
+aus.
+
+Vor dem Schreiben werden die gespeicherte `.sha256`-Prüfsumme und der
+dekodierte Inhalt vollständig gelesen. Das Ziel muss ausgehängt, unbenutzt,
+ohne aktive LUKS-/LVM-Abhängigkeiten oder Swap-Bereiche und von der Bilddatei verschieden sein.
+Die GUI verlangt den exakten Gerätenamen und eine zweite Bestätigung.
+Nach einem Rohabbild-Schreibvorgang liest das Programm den beschriebenen
+Bereich zurück und vergleicht SHA256. Bei `fsarchiver` meldet `restfs` den
+Erfolg; eine vollständige Dateiprüfung ist damit nicht nachgewiesen.
+**Ein echter Wiederherstellungstest auf Linux-Hardware steht noch aus.**
+
+Auch die CLI ist verfügbar:
+
+```bash
+python3 disk-image-restore.py --plan --image /backup/abbild.img.zst --target /dev/sdb
+sudo python3 disk-image-restore.py --restore --image /backup/abbild.img.zst --target /dev/sdb
+python3 disk-image-restore.py --extract --image /backup/abbild.img.zst --output /backup/entpackt.img
+```
+
+Beim CLI-Zurückspielen muss der Zielgerätepfad erneut eingetippt werden.
+Für `.age` jeweils `--identity /pfad/zur/privaten-identität` ergänzen.
+Einzelne Dateien lassen sich aus einer **unkomprimierten `.img`** mit
+`guestfish` im Lesemodus kopieren. Die GUI bietet bei Bedarf auf Debian/Ubuntu
+die Installation von `libguestfs-tools` an. Komprimierte oder verschlüsselte
+Abbilder zuerst als neue `.img` entpacken; das Original bleibt erhalten.
+Beim Entpacken entsteht auch eine neue `.sha256`-Datei für die erzeugte `.img`.
+Einzelne Dateien aus `.fsa` sind in dieser Vorschau noch nicht verfügbar.
 
 Zu jeder Sicherung gehören ein Protokoll und eine `.sha256`-Datei. Für `ddrescue` kommt die Map-Datei hinzu. Unvollständige Dateien bleiben zur Diagnose erhalten. Die `.sha256`-Datei lässt sich mit `sha256sum -c DATEI.sha256` prüfen.
 

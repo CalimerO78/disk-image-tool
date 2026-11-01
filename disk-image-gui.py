@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
+from disk_image_restore_gui import RestoreWindow
+
 
 SCRIPT = Path(__file__).resolve().with_name("disk-image.sh")
 RUNNER = Path(__file__).resolve().with_name("disk-image-runner.py")
@@ -193,6 +195,7 @@ class App(tk.Tk):
         self.process: subprocess.Popen[str] | None = None
         self.update_running = False
         self.update_installed = False
+        self.restore_active = False
         self.source_size = 0
         self.read_rate: float | None = None
         self.write_rate: float | None = None
@@ -251,11 +254,13 @@ class App(tk.Tk):
         self.mail_tab = ttk.Frame(self.tabs, padding=18)
         self.run_tab = ttk.Frame(self.tabs, padding=18)
         self.update_tab = ttk.Frame(self.tabs, padding=18)
+        self.restore_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.basic, text="1  Quelle und Ziel")
         self.tabs.add(self.options, text="2  Weitere Optionen")
         self.tabs.add(self.mail_tab, text="3  E-Mail")
         self.tabs.add(self.run_tab, text="4  Prüfen und starten")
         self.tabs.add(self.update_tab, text="5  Programm")
+        self.tabs.add(self.restore_tab, text="6  Wiederherstellen")
         for frame in (self.basic, self.options, self.mail_tab):
             frame.columnconfigure(1, weight=1)
 
@@ -428,6 +433,15 @@ class App(tk.Tk):
                    command=self._install_launchers).pack(anchor="w")
         self.launcher_status = ttk.Label(self.update_tab, text="", wraplength=650)
         self.launcher_status.pack(anchor="w", pady=(8, 0))
+        ttk.Label(self.restore_tab, text="Abbild wiederherstellen oder Dateien herauskopieren",
+                  font=("Sans", 15, "bold")).pack(anchor="w", pady=(0, 12))
+        ttk.Label(self.restore_tab,
+                  text="Prüfen, als .img entpacken, auf ein ausreichend großes Zielgerät zurückspielen "
+                       "oder einzelne Dateien aus einer .img schreibgeschützt herauskopieren. "
+                       "Das Zielgerät wird erst nach ausdrücklicher Bestätigung beschrieben.",
+                  wraplength=650).pack(anchor="w", pady=(0, 15))
+        ttk.Button(self.restore_tab, text="Wiederherstellung öffnen …",
+                   command=self._open_restore).pack(anchor="w")
         self.tabs.bind("<<NotebookTabChanged>>", lambda _e: self._show_summary()
                        if self.tabs.index("current") == 3 else None)
         self._notify_changed()
@@ -796,6 +810,9 @@ class App(tk.Tk):
     def _run_update(self, *, apply: bool, automatic: bool = False) -> None:
         if self.update_running:
             return
+        if self.restore_active:
+            self.update_status.set("Während der Wiederherstellung sind Updates gesperrt.")
+            return
         if self.process is not None:
             self.update_status.set("Während einer Sicherung sind Updates gesperrt.")
             return
@@ -827,7 +844,7 @@ class App(tk.Tk):
         self.events.put(("update_done", data))
 
     def _restart(self) -> None:
-        if self.process is not None or self.update_running:
+        if self.process is not None or self.update_running or self.restore_active:
             self.update_status.set("Bitte erst den laufenden Vorgang beenden.")
             return
         try:
@@ -856,7 +873,19 @@ class App(tk.Tk):
             self.launcher_status.configure(text="Einrichtung fehlgeschlagen: " +
                                            (result.stderr.strip() or result.stdout.strip()))
 
+    def _open_restore(self) -> None:
+        if self.process is not None or self.start_button.cget("state") == "disabled" or self.update_running:
+            messagebox.showinfo("Vorgang läuft", "Bitte zuerst die Sicherung oder das Update beenden.")
+            return
+        if self.restore_active:
+            return
+        self.restore_active = True
+        RestoreWindow(self, lambda: setattr(self, "restore_active", False))
+
     def _start(self) -> None:
+        if self.restore_active:
+            messagebox.showinfo("Wiederherstellung geöffnet", "Bitte den Wiederherstellungsbereich zuerst schließen.")
+            return
         if self.update_running or self.update_installed:
             messagebox.showinfo("Programm-Update",
                                 "Bitte das Update abschließen und das Programm neu starten, bevor eine Sicherung beginnt.")
@@ -1055,6 +1084,9 @@ class App(tk.Tk):
                 messagebox.showwarning("Abbruch", "Der Lauf antwortet nicht mehr. Bitte die Ausgabe prüfen.")
 
     def _close(self) -> None:
+        if self.restore_active:
+            messagebox.showinfo("Wiederherstellung geöffnet", "Bitte das Wiederherstellungsfenster zuerst schließen.")
+            return
         if self.update_running:
             messagebox.showinfo("Update läuft", "Bitte die Update-Prüfung zuerst abschließen lassen.")
             return

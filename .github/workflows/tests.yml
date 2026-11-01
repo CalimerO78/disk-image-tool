@@ -17,6 +17,7 @@ jobs:
           bash -n disk-image-pv.sh
           bash -n disk-image-ownership.sh
           bash -n disk-image-cli-launcher.sh
+          bash -n install.sh
           bash disk-image.sh --help >/dev/null
       - name: GUI, Fortschritt und Updates prüfen
-        run: xvfb-run -a python3 -m unittest -v test_gui.py test_progress.py test_update.py test_launchers.py test_ownership.py
+        run: xvfb-run -a python3 -m unittest -v test_gui.py test_progress.py test_update.py test_launchers.py test_ownership.py test_restore.py

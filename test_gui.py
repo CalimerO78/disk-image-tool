@@ -172,6 +172,37 @@ class CommandTests(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_restore_window_is_available_from_gui(self):
+        app = gui.App()
+        try:
+            app._open_restore()
+            self.assertTrue(app.restore_active)
+            windows = [item for item in app.winfo_children()
+                       if isinstance(item, gui.RestoreWindow)]
+            self.assertEqual(len(windows), 1)
+            windows[0]._close()
+            self.assertFalse(app.restore_active)
+        finally:
+            app.destroy()
+
+    def test_restore_requires_exact_typed_device(self):
+        app = gui.App()
+        try:
+            app._open_restore()
+            window = next(item for item in app.winfo_children()
+                          if isinstance(item, gui.RestoreWindow))
+            window.image.set("/backup/image.img")
+            window.target.set("/dev/sdb")
+            window.plan = {"target_model": "Test", "target_size": 100}
+            window.planned_inputs = window._inputs()
+            with patch.object(gui.RestoreWindow, "_start") as start, \
+                 patch("disk_image_restore_gui.simpledialog.askstring", return_value="/dev/sdc"):
+                window._execute()
+                start.assert_not_called()
+            window._close()
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

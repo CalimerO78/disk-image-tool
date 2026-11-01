@@ -227,11 +227,93 @@ Bei interaktiver Nutzung werden nicht gesetzte Optionen abgefragt. Eine nicht un
 
 **Mail kommt nicht an:** Das Skript nutzt das lokale Programm `mail`. Die tatsächliche Zustellung hängt von dessen Konfiguration und einem Mail-Transport ab.
 
-## 13. Wiederherstellung vorbereiten
+## 13. Wiederherstellen, entpacken und Dateien kopieren
 
-Eine Wiederherstellung überschreibt das gewählte Zielgerät. Vorher das Backup mit `sha256sum -c` prüfen, den Inhaltstyp feststellen und das Ziel mit `lsblk` eindeutig identifizieren. Die Zielpartitionen müssen ausgehängt sein. Für `dd`- und `ddrescue`-Abbilder muss das Ziel ausreichend groß sein. `fsarchiver` stellt eine gespeicherte Partition mit `restfs` wieder her; die genaue Zielpartition ist dabei ausdrücklich anzugeben. Die [FSArchiver-Anleitung](https://www.fsarchiver.org/quickstart/) enthält die Syntax für `restfs`.
+Die Erstellung und Wiederherstellung sind getrennte Programme.
+`disk-image.sh` erstellt das Backup; `disk-image-restore.py` prüft, entpackt
+oder schreibt es zurück. Die GUI bietet dafür den Reiter **Wiederherstellen**.
+Die Wiederherstellung ist derzeit eine **Vorschau ohne echten Hardwaretest**.
 
-Der konkrete Wiederherstellungsbefehl hängt von Format, Verschlüsselung und Zielgerät ab. Das Skript führt selbst **keine** Wiederherstellung aus. Ein Test auf einem geeigneten Ersatzdatenträger ist die aussagekräftigste Prüfung, ob sich die gesicherten Daten wirklich nutzen lassen.
+### Sicherheitsprüfungen vor dem Zurückspielen
+
+1. Die Bilddatei und ihre zugehörige `.sha256`-Datei müssen vorhanden sein.
+   Die gespeicherte Datei wird vollständig gehasht. Ein falscher SHA256-Wert
+   sperrt den Vorgang. Diese Prüfsumme belegt Integrität, nicht die Herkunft.
+2. Rohabbilder werden vor dem Schreiben vollständig entschlüsselt und/oder
+   entpackt. So werden Größe und SHA256 des Rohinhalts ermittelt. Ist eine
+   vorhandene `ddrescue`-Map-Datei unvollständig, wird das Zurückspielen
+   gesperrt. Bei `.fsa` muss `fsarchiver archinfo` genau ein Dateisystem
+   (ID 0) samt Originalgröße ausweisen.
+3. Ein Rohabbild verlangt einen **ganzen Datenträger** mit mindestens der
+   Größe des Rohinhalts. `.fsa` verlangt eine **Partition** mit mindestens
+   der ursprünglichen Dateisystemgröße. Ein kleineres Ziel wird abgewiesen.
+4. Ziel und sämtliche Partitionen seines Datenträgers müssen ausgehängt und
+   frei von aktiven Geräte-Abhängigkeiten sein. Liegt das Abbild selbst auf
+   diesem Datenträger, wird abgebrochen. Das Programm hängt niemals
+   automatisch aus. Für einen Systemdatenträger von einem Live-System starten.
+5. Die GUI zeigt Modell, Größe und Gerätenamen. Der vollständige Pfad muss
+   eingetippt und anschließend noch einmal bestätigt werden. Die CLI fragt
+   den Pfad ebenfalls ab. Unmittelbar vor dem Schreiben wird das Ziel erneut
+   geprüft. Ein Rohabbild wird exklusiv als Blockgerät geöffnet.
+6. Nach dem Rohabbild-Schreiben wird der beschriebene Bereich zurückgelesen
+   und mit dem zuvor berechneten SHA256-Wert verglichen. Das schützt vor
+   erkennbaren Schreibfehlern, ersetzt aber keinen Boot- und Dateitest.
+   `fsarchiver restfs` bietet hier keine entsprechende Rohdaten-Nachprüfung;
+   die wiederhergestellten Dateien müssen zusätzlich geprüft werden.
+
+Beispiel für die CLI, erst lesen, dann schreiben:
+
+```bash
+python3 disk-image-restore.py --plan --image /backup/abbild.img.zst --target /dev/sdb
+sudo python3 disk-image-restore.py --restore --image /backup/abbild.img.zst --target /dev/sdb
+```
+
+Bei `.age`-Dateien jeweils `--identity /pfad/zum/privaten-age-schlüssel`
+ergänzen. Ohne gültigen Schlüssel wird nicht geschrieben. Das Ziel `/dev/sdb`
+im Beispiel muss gegen das tatsächlich gewählte Gerät ausgetauscht werden.
+Ein größeres Ziel ist erlaubt; der über das Abbild hinausgehende Platz wird
+nicht automatisch partitioniert oder formatiert.
+
+### Entpacken als `.img`
+
+```bash
+python3 disk-image-restore.py --extract \
+  --image /backup/abbild.img.zst --output /backup/entpackt.img
+```
+
+Die Ausgabedatei und die daneben angelegte `.sha256` dürfen noch nicht
+existieren. Vorher werden Prüfsumme, entpackte Größe und freier Platz geprüft.
+Das Original bleibt unangetastet.
+Bei einer Unterbrechung kann eine Teil-Datei zurückbleiben; sie ist kein
+fertiges Abbild. `.fsa` ist kein Rohabbild und kann nicht in eine `.img`
+umgewandelt werden.
+
+### Einzelne Dateien aus `.img` ansehen und kopieren
+
+Im zweiten Reiter des Wiederherstellungsfensters **Dateisysteme laden**,
+ein Dateisystem auswählen und Ordner öffnen. Eine markierte Datei lässt
+sich in einen neuen lokalen Pfad kopieren. Das Bild wird mit `guestfish`
+aus `libguestfs-tools` ausdrücklich **nur lesend** und als Rohformat geöffnet.
+Beim Öffnen wird die zugehörige `.sha256`-Datei geprüft.
+Bei komprimierten oder verschlüsselten Bildern zuerst eine neue `.img`
+erzeugen. Die GUI fragt bei fehlendem `guestfish` nach der Installation
+(Standard **Ja**). Einzelne Dateien aus `.fsa` sind vorerst nicht enthalten.
+
+CLI-Beispiel:
+
+```bash
+python3 disk_image_browse.py --filesystems --image /backup/entpackt.img
+python3 disk_image_browse.py --list --image /backup/entpackt.img \
+  --filesystem /dev/sda1 --path /
+python3 disk_image_browse.py --copy-file --image /backup/entpackt.img \
+  --filesystem /dev/sda1 --path /Dokumente/Datei.txt \
+  --output /home/user/Wiedergefunden-Datei.txt
+```
+
+Das Ziel der einzelnen Datei darf noch nicht existieren. Dateinamen und
+Dateisystemtypen hängen vom Inhalt des Abbilds und von `libguestfs` ab.
+Ein durch `ddrescue` nur teilweise gerettetes Bild kann beschädigte Dateien
+enthalten, auch wenn das Durchsuchen möglich ist.
 
 ## 14. Grafische Bedienung unter Linux
 
@@ -294,6 +376,7 @@ werden; nur eine Sicherung fordert später Administratorrechte an.
    Einträge im Anwendungsmenü des aktuellen Benutzers anlegen. Der grafische
    Eintrag öffnet die GUI. Der Terminal-Eintrag zeigt ein kleines Menü:
    **1** startet die interaktive CLI, **2** zeigt die Parameterhilfe, **3**
+   öffnet das Menü zum Prüfen, Entpacken oder Zurückspielen und **4**
    schließt das Terminal. Erst beim Start einer Sicherung fragt `sudo` nach
    dem Passwort. Die Startsymbole benötigen den Installationsordner weiterhin
    an seinem ursprünglichen Ort.

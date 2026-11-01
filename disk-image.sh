@@ -668,20 +668,16 @@ PV_READ=(pv -petrab -s "$SIZE" -N "$(basename "$SRC")")
 PV_WRITE=(cat)
 PV_VERIFY=(pv -petrab -s "$SIZE" -N verify)
 if (( GUI_PROGRESS )); then
-    # pv 1.8 ignoriert -F im numerischen Modus. -n -b -r liefert zwei
-    # Zahlen pro Zeile; awk ergänzt den Typ und spült jede Zeile sofort.
+    # pv 1.8 ignoriert -F und gibt trotz -r im numerischen Modus nur die
+    # Bytezahl aus. Die GUI berechnet die Rate aus aufeinanderfolgenden
+    # Bytewerten und ihrer Zeitdifferenz.
     gui_pv() {
         local kind="$1"
         shift
-        pv -n -b -r -i 0.2 "$@" 2> >(
+        pv -n -b -i 0.2 "$@" 2> >(
             awk -v kind="$kind" '
-                $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+([.][0-9]+)?$/ {
-                    printf "@@DISK_IMAGE_PROGRESS {\"kind\":\"%s\",\"bytes\":%s,\"rate\":%s}\n", kind, $1, $2
-                    fflush()
-                    next
-                }
                 $1 ~ /^[0-9]+$/ && NF == 1 {
-                    printf "@@DISK_IMAGE_PROGRESS {\"kind\":\"%s\",\"bytes\":%s,\"rate\":null}\n", kind, $1
+                    printf "@@DISK_IMAGE_PROGRESS {\"kind\":\"%s\",\"bytes\":%s}\n", kind, $1
                     fflush()
                     next
                 }

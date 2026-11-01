@@ -16,6 +16,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+import time
 import tempfile
 import threading
 import tkinter as tk
@@ -189,6 +190,7 @@ class App(tk.Tk):
         self.source_size = 0
         self.read_rate: float | None = None
         self.write_rate: float | None = None
+        self.last_bytes: dict[str, tuple[float, float]] = {}
         self.devices: dict[str, dict] = {}
 
         self.engine = tk.StringVar(value="dd")
@@ -860,6 +862,7 @@ class App(tk.Tk):
         self.status.set("Sicherung läuft …")
         self.source_size = 0
         self.read_rate = self.write_rate = None
+        self.last_bytes.clear()
         self.progress_label.set("Vorbereitung · Fortschritt: —")
         self.speed_label.set("Lesen: —   ·   Schreiben: —")
         self.progress.configure(mode="indeterminate", value=0)
@@ -953,6 +956,18 @@ class App(tk.Tk):
             return "—"
         return f"{max(0.0, rate) / 1048576:.1f} MiB/s"
 
+    def _rate_from_bytes(self, kind: str, value: object) -> float | None:
+        """Aus zwei pv-Bytezählern eine aktuelle Transferrate berechnen."""
+
+        if not isinstance(value, (int, float)):
+            return None
+        now = time.monotonic()
+        previous = self.last_bytes.get(kind)
+        self.last_bytes[kind] = (float(value), now)
+        if previous is None or value < previous[0] or now <= previous[1]:
+            return None
+        return max(0.0, (value - previous[0]) / (now - previous[1]))
+
     def _show_progress(self, data: dict) -> None:
         """Nur gelieferte Messwerte anzeigen, niemals Prozent schätzen."""
 
@@ -964,11 +979,11 @@ class App(tk.Tk):
         if kind in {"read", "verify"}:
             if self.source_size > 0 and isinstance(data.get("bytes"), (int, float)):
                 percent = 100 * data["bytes"] / self.source_size
-            self.read_rate = data.get("rate") if isinstance(data.get("rate"), (int, float)) else None
+            self.read_rate = self._rate_from_bytes(kind, data.get("bytes"))
             if kind == "verify":
                 self.write_rate = None
         elif kind == "write":
-            self.write_rate = data.get("rate") if isinstance(data.get("rate"), (int, float)) else None
+            self.write_rate = self._rate_from_bytes(kind, data.get("bytes"))
         elif kind in {"ddrescue", "fsarchiver"}:
             self.read_rate = data.get("read_bps") if isinstance(data.get("read_bps"), (int, float)) else None
             self.write_rate = data.get("write_bps") if isinstance(data.get("write_bps"), (int, float)) else None

@@ -144,11 +144,13 @@ class CommandTests(unittest.TestCase):
         app = gui.App()
         try:
             app.source_size = 1000
-            app._show_progress({"kind": "read", "bytes": 250, "rate": 1048576})
-            self.assertEqual(app.progress.cget("value"), 25)
-            self.assertIn("25.0 %", app.progress_label.get())
+            with patch.object(gui.time, "monotonic", side_effect=[1.0, 2.0, 3.0, 4.0]):
+                app._show_progress({"kind": "read", "bytes": 250})
+                app._show_progress({"kind": "read", "bytes": 1048826})
+                app._show_progress({"kind": "write", "bytes": 100})
+                app._show_progress({"kind": "write", "bytes": 2097252})
+            self.assertEqual(app.progress.cget("value"), 100)
             self.assertIn("1.0 MiB/s", app.speed_label.get())
-            app._show_progress({"kind": "write", "bytes": 100, "rate": 2097152})
             self.assertIn("2.0 MiB/s", app.speed_label.get())
         finally:
             app.destroy()

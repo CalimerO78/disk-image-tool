@@ -245,6 +245,22 @@ nachinstalliert werden. Für die Administrator-Abfrage benötigt die Sitzung
 gestartet werden; dabei funktionieren Desktop-Benachrichtigungen je nach Sitzung
 gegebenenfalls nicht.
 
+Für eine Erstinstallation aus GitHub auf Debian/Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install git
+git clone https://github.com/CalimerO78/disk-image-tool.git
+cd disk-image-tool
+bash install.sh
+```
+
+Der letzte Schritt prüft die GUI-Voraussetzungen, fragt bei fehlenden Paketen
+nach der Installation (**Enter = Ja**) und legt sofort zwei Startsymbole mit
+Festplatten-Icon im Anwendungsmenü des aktuellen Benutzers an. Die GUI zeigt
+dasselbe Icon im Fenstertitel. `install.sh` darf nicht mit `sudo` gestartet
+werden; nur eine Sicherung fordert später Administratorrechte an.
+
 1. **Quelle und Ziel:** Sicherungsart wählen. `dd` und `ddrescue` zeigen ganze
    Datenträger; `fsarchiver` zeigt Partitionen. Den vorhandenen lokalen
    Zielordner wählen. Bei eingehängter Quelle ist Abbrechen der Standard;

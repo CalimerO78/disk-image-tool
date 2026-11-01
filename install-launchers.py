@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent
 MARKER = "X-DiskImageTool-Managed=true"
 ENTRY_NAMES = ("disk-image-tool.desktop", "disk-image-tool-cli.desktop")
 ICON_NAME = "disk-image-tool.png"
+ICON_LARGE_NAME = "disk-image-tool-128.png"
 
 
 def data_home() -> Path:
@@ -57,6 +58,10 @@ def paths(base: Path) -> tuple[Path, Path, Path]:
             base / "icons/hicolor/48x48/apps" / ICON_NAME)
 
 
+def large_icon_path(base: Path) -> Path:
+    return base / "icons/hicolor/128x128/apps" / ICON_NAME
+
+
 def atomic_write(path: Path, content: bytes) -> None:
     """Fertigen Inhalt im selben Ordner anlegen und ohne Teil-Datei ersetzen."""
 
@@ -80,22 +85,27 @@ def install(base: Path) -> None:
     gui = ROOT / "disk-image-gui.py"
     cli = ROOT / "disk-image-cli-launcher.sh"
     icon_source = ROOT / "assets" / ICON_NAME
-    for source in (gui, cli, icon_source):
+    large_icon_source = ROOT / "assets" / ICON_LARGE_NAME
+    for source in (gui, cli, icon_source, large_icon_source):
         if not source.is_file():
             raise RuntimeError(f"Benötigte Datei fehlt: {source}")
     gui_entry, cli_entry, icon_target = paths(base)
+    large_icon_target = large_icon_path(base)
     for target in (gui_entry, cli_entry):
         if target.is_symlink() or (target.exists() and MARKER not in target.read_text(encoding="utf-8")):
             raise RuntimeError(f"Vorhandener fremder Startmenü-Eintrag bleibt unverändert: {target}")
-    if icon_target.is_symlink() or (icon_target.exists() and
-                                   icon_target.read_bytes() != icon_source.read_bytes() and
+    for target, source in ((icon_target, icon_source),
+                           (large_icon_target, large_icon_source)):
+        if target.is_symlink() or (target.exists() and
+                                   target.read_bytes() != source.read_bytes() and
                                    not gui_entry.exists() and not cli_entry.exists()):
-        raise RuntimeError(f"Vorhandenes fremdes Icon bleibt unverändert: {icon_target}")
+            raise RuntimeError(f"Vorhandenes fremdes Icon bleibt unverändert: {target}")
     commands = (
         "python3 " + quote_exec(gui),
         "bash " + quote_exec(cli),
     )
     atomic_write(icon_target, icon_source.read_bytes())
+    atomic_write(large_icon_target, large_icon_source.read_bytes())
     atomic_write(gui_entry, entry("Datenträger sichern", "Grafische Datenträgersicherung",
                                   commands[0], False).encode("utf-8"))
     atomic_write(cli_entry, entry("Datenträger sichern (Terminal)",
@@ -107,6 +117,7 @@ def remove(base: Path) -> None:
     """Nur die eigenen Startmenü-Einträge entfernen."""
 
     gui_entry, cli_entry, icon_target = paths(base)
+    large_icon_target = large_icon_path(base)
     for target in (gui_entry, cli_entry):
         if target.is_symlink():
             raise RuntimeError(f"Symbolischer Link wird nicht verändert: {target}")
@@ -117,6 +128,10 @@ def remove(base: Path) -> None:
     source = ROOT / "assets" / ICON_NAME
     if icon_target.is_file() and not icon_target.is_symlink() and source.is_file() and icon_target.read_bytes() == source.read_bytes():
         icon_target.unlink()
+    large_source = ROOT / "assets" / ICON_LARGE_NAME
+    if (large_icon_target.is_file() and not large_icon_target.is_symlink() and
+            large_source.is_file() and large_icon_target.read_bytes() == large_source.read_bytes()):
+        large_icon_target.unlink()
 
 
 def main(argv: list[str] | None = None) -> int:

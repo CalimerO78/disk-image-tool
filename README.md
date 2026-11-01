@@ -24,15 +24,19 @@ Einstellungen an `disk-image.sh`; beide Wege erzeugen dasselbe Sicherungsformat.
 
 ```bash
 sudo apt update
-sudo apt install git python3 python3-tk pkexec
+sudo apt install git
 git clone https://github.com/CalimerO78/disk-image-tool.git
 cd disk-image-tool
-python3 disk-image-gui.py
+bash install.sh
 ```
 
-Im Reiter **Programm** auf **Startsymbole einrichten** klicken. Danach stehen
-im Linux-Anwendungsmenü **Datenträger sichern** (GUI) und **Datenträger sichern
-(Terminal)** (interaktive CLI mit Parameterhilfe). Alternativ im Installationsordner:
+`install.sh` prüft Python 3, Tkinter und `pkexec`, bietet fehlende Pakete auf
+Debian/Ubuntu zur Installation an (**Enter bedeutet Ja**) und richtet
+**automatisch** beide Startsymbole samt passendem Icon ein. Im
+Linux-Anwendungsmenü stehen anschließend **Datenträger sichern** (GUI) und
+**Datenträger sichern (Terminal)** (interaktive CLI mit Parameterhilfe).
+Alternativ lassen sich die Einträge später im Reiter **Programm** erneut
+einrichten oder im Installationsordner aktualisieren:
 
 ```bash
 python3 install-launchers.py --install
@@ -43,6 +47,8 @@ der Installationsordner muss am selben Ort bleiben. Entfernen mit
 `python3 install-launchers.py --remove`. Im Terminal-Starter führt **1**
 durch die Sicherung, **2** zeigt alle CLI-Parameter. Direkter Aufruf bleibt
 `sudo bash disk-image.sh`, die Hilfe zeigt `bash disk-image.sh --help`.
+Bei einer späteren Git-Aktualisierung bleiben die Startsymbole erhalten.
+Nach einem Umzug des Installationsordners `bash install.sh` erneut ausführen.
 
 Die grafische Administrator-Abfrage benötigt einen laufenden Polkit-Agenten in
 der Desktop-Sitzung. Die Sicherung selbst fragt nach der Bestätigung nach

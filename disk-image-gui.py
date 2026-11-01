@@ -179,6 +179,11 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Datenträger sichern")
+        try:
+            self._window_icon = tk.PhotoImage(file=str(SCRIPT.with_name("assets") / "disk-image-tool-128.png"))
+            self.iconphoto(True, self._window_icon)
+        except tk.TclError:
+            self._window_icon = None
         self.geometry("920x750")
         self.minsize(760, 620)
         style = ttk.Style(self)

@@ -30,6 +30,7 @@ RUNNER = Path(__file__).resolve().with_name("disk-image-runner.py")
 MAIL_HELPER = Path(__file__).resolve().with_name("disk-image-mail.py")
 MAIL_CONFIG = Path.home() / ".config" / "disk-image-tool" / "mail.json"
 UPDATE_TOOL = Path(__file__).resolve().with_name("disk-image-update.py")
+LAUNCHER_TOOL = Path(__file__).resolve().with_name("install-launchers.py")
 UPDATE_PREFS = Path.home() / ".config" / "disk-image-tool" / "update.json"
 COMPRESSION = {"Keine (unverändertes Abbild)": "none", "gzip (kleinere Datei)": "gzip",
                "zstd (schnell und platzsparend)": "zstd"}
@@ -70,8 +71,8 @@ def validate(settings: Settings) -> None:
         raise ValueError("Bitte eine Sicherungsart wählen.")
     if not re.fullmatch(r"/dev/[A-Za-z0-9._/+:-]+", settings.source):
         raise ValueError("Bitte ein Quellgerät aus der Liste wählen.")
-    if not Path(settings.dest).is_dir():
-        raise ValueError("Der Zielordner muss bereits existieren.")
+    if not settings.dest or not Path(settings.dest).is_absolute() or not Path(settings.dest).is_dir():
+        raise ValueError("Bitte einen vorhandenen Zielordner auswählen.")
     if settings.mounted not in {"abort", "unmount", "allow"}:
         raise ValueError("Bitte den Umgang mit eingehängten Datenträgern wählen.")
     if settings.smart not in {"show", "skip"} or settings.notify not in {"none", "desktop", "mail"}:
@@ -248,7 +249,7 @@ class App(tk.Tk):
         self.tabs.add(self.options, text="2  Weitere Optionen")
         self.tabs.add(self.mail_tab, text="3  E-Mail")
         self.tabs.add(self.run_tab, text="4  Prüfen und starten")
-        self.tabs.add(self.update_tab, text="5  Updates")
+        self.tabs.add(self.update_tab, text="5  Programm")
         for frame in (self.basic, self.options, self.mail_tab):
             frame.columnconfigure(1, weight=1)
 
@@ -410,6 +411,17 @@ class App(tk.Tk):
                   text="Bei einer Installation aus einem ZIP-Archiv fehlen Git-Daten. "
                        "Für automatische Updates das Repository einmal mit git clone installieren.",
                   wraplength=650).pack(anchor="w")
+        ttk.Separator(self.update_tab).pack(fill="x", pady=(24, 18))
+        ttk.Label(self.update_tab, text="Im Anwendungsmenü starten",
+                  font=("Sans", 15, "bold")).pack(anchor="w", pady=(0, 8))
+        ttk.Label(self.update_tab,
+                  text="Zwei Startsymbole einrichten: eines für die grafische Oberfläche "
+                       "und eines für die interaktive Kommandozeile im Terminal.",
+                  wraplength=650).pack(anchor="w", pady=(0, 10))
+        ttk.Button(self.update_tab, text="Startsymbole einrichten",
+                   command=self._install_launchers).pack(anchor="w")
+        self.launcher_status = ttk.Label(self.update_tab, text="", wraplength=650)
+        self.launcher_status.pack(anchor="w", pady=(8, 0))
         self.tabs.bind("<<NotebookTabChanged>>", lambda _e: self._show_summary()
                        if self.tabs.index("current") == 3 else None)
         self._notify_changed()
@@ -819,6 +831,24 @@ class App(tk.Tk):
             messagebox.showerror("Neustart fehlgeschlagen", str(exc))
             return
         self.destroy()
+
+    def _install_launchers(self) -> None:
+        """Startmenü-Einträge ohne Administratorrechte für den Benutzer anlegen."""
+
+        if platform.system() != "Linux" or not LAUNCHER_TOOL.is_file():
+            self.launcher_status.configure(text="Die Startsymbole benötigen Linux und die Installationsdatei.")
+            return
+        try:
+            result = subprocess.run([sys.executable, str(LAUNCHER_TOOL), "--install"],
+                                    capture_output=True, text=True, timeout=20, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.launcher_status.configure(text=f"Einrichtung fehlgeschlagen: {exc}")
+            return
+        if result.returncode == 0:
+            self.launcher_status.configure(text="Startsymbole eingerichtet. Im Anwendungsmenü nach „Datenträger sichern“ suchen.")
+        else:
+            self.launcher_status.configure(text="Einrichtung fehlgeschlagen: " +
+                                           (result.stderr.strip() or result.stdout.strip()))
 
     def _start(self) -> None:
         if self.update_running or self.update_installed:

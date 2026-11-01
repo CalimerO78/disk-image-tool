@@ -50,6 +50,11 @@ class CommandTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ausgehängte Partition"):
                 gui.build_command(settings)
 
+    def test_missing_destination_is_rejected_before_start(self):
+        settings = gui.Settings(engine="dd", source="/dev/sda", dest="", mounted="unmount")
+        with self.assertRaisesRegex(ValueError, "Zielordner auswählen"):
+            gui.build_command(settings)
+
     def test_encrypted_verification_needs_identity(self):
         with tempfile.TemporaryDirectory() as destination:
             settings = gui.Settings(engine="dd", source="/dev/sdb", dest=destination,

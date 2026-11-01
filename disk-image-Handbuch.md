@@ -274,6 +274,34 @@ gegebenenfalls nicht.
    neu starten. **Beim Programmstart automatisch aktualisieren** schaltet
    die Aktualisierung beim nächsten Start ein. Die Einstellung ist zunächst
    ausgeschaltet. Während einer Sicherung ist ein Update gesperrt.
+6. **Startsymbole:** Im selben Reiter mit **Startsymbole einrichten** zwei
+   Einträge im Anwendungsmenü des aktuellen Benutzers anlegen. Der grafische
+   Eintrag öffnet die GUI. Der Terminal-Eintrag zeigt ein kleines Menü:
+   **1** startet die interaktive CLI, **2** zeigt die Parameterhilfe, **3**
+   schließt das Terminal. Erst beim Start einer Sicherung fragt `sudo` nach
+   dem Passwort. Die Startsymbole benötigen den Installationsordner weiterhin
+   an seinem ursprünglichen Ort.
+
+Alternativ die Startsymbole ohne Administratorrechte direkt installieren
+oder entfernen:
+
+```bash
+python3 install-launchers.py --install
+python3 install-launchers.py --remove
+```
+
+Ein leerer Zielordner wird bereits vor der Administrator-Abfrage abgewiesen.
+Deshalb erscheint bei diesem Eingabefehler auch noch keine Lese- oder
+Schreibrate. Sobald Daten fließen, berechnet die GUI die Rate aus den
+gemessenen Bytezählern und der verstrichenen Zeit.
+
+Nach einem Lauf über `sudo` oder die GUI mit `pkexec` gehören alle neu
+erzeugten Ausgabedateien (Abbild, `.sha256`, `.log`, bei `ddrescue` auch
+`.map`) dem aufrufenden Benutzer. Die Rechte werden auf `600` gesetzt.
+Bei einem direkten Root-Start ohne bekannten aufrufenden Benutzer bleibt
+root Besitzer. Manche Ziel-Dateisysteme unterstützen Unix-Eigentümer und
+Rechte nicht; das Skript zeigt dann eine Warnung. Bereits vorhandene
+Dateien aus älteren Sicherungen ändert ein Update nicht rückwirkend.
 
 Bei `dd` misst `pv` den gelesenen Datenstrom und die geschriebene Datei.
 Bei `ddrescue` wird der Anteil erfolgreich geretteter Bereiche aus der

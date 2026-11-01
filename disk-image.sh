@@ -17,7 +17,7 @@
 # Die .sha256-Datei lässt sich mit "sha256sum -c DATEI.sha256" prüfen.
 
 set -o pipefail
-umask 077 # Nur root darf neu erzeugte Abbild- und Protokolldateien lesen.
+umask 077 # Ausgaben sind zunächst nur für root lesbar; am Ende folgt die Übergabe.
 
 readonly BS_NORMAL=4M
 readonly BS_CONTINUE=128K
@@ -142,6 +142,10 @@ human() {
     numfmt --to=iec --suffix=B "$1" 2>/dev/null || printf '%s B\n' "$1"
 }
 
+# sudo setzt SUDO_UID, pkexec PKEXEC_UID. Die Hilfsfunktion übernimmt nur
+# vorhandene reguläre Ausgabedateien und schützt sie danach mit Modus 600.
+source "$(dirname -- "${BASH_SOURCE[0]}")/disk-image-ownership.sh"
+
 cleanup() {
     local exit_status=$?
     if [[ -n "$HASH_PID" ]]; then
@@ -149,6 +153,7 @@ cleanup() {
         wait "$HASH_PID" 2>/dev/null || true
     fi
     [[ -z "$TEMP_DIR" ]] || rm -rf -- "$TEMP_DIR"
+    release_outputs_to_caller
     if (( RUN_STARTED )); then
         if [[ "$NOTIFY_MODE" == desktop ]]; then
             notify-send 'Datenträgersicherung' "Beendet mit Status $exit_status: $SRC" \
@@ -239,7 +244,7 @@ fi
 # optional; die übrigen Programme werden für die Sicherung benötigt.
 check_prerequisites() {
     local tool package missing_smart=0
-    local -a required=(lsblk blockdev findmnt umount df sha256sum sync mktemp stat numfmt cat awk grep tail tr basename dirname date)
+    local -a required=(lsblk blockdev findmnt umount df sha256sum sync mktemp stat numfmt cat awk grep tail tr basename dirname date getent chown chmod)
     local -a missing=() packages=()
     local -A needed_packages=()
 
@@ -269,6 +274,7 @@ check_prerequisites() {
             mail) package=bsd-mailx ;;
             python3) package=python3 ;;
             awk) package=mawk ;;
+            getent) package=libc-bin ;;
             grep) package=grep ;;
             *) package=coreutils ;;
         esac
@@ -671,20 +677,9 @@ if (( GUI_PROGRESS )); then
     # pv 1.8 ignoriert -F und gibt trotz -r im numerischen Modus nur die
     # Bytezahl aus. Die GUI berechnet die Rate aus aufeinanderfolgenden
     # Bytewerten und ihrer Zeitdifferenz.
-    gui_pv() {
-        local kind="$1"
-        shift
-        pv -n -b -i 0.2 "$@" 2> >(
-            awk -v kind="$kind" '
-                $1 ~ /^[0-9]+$/ && NF == 1 {
-                    printf "@@DISK_IMAGE_PROGRESS {\"kind\":\"%s\",\"bytes\":%s}\n", kind, $1
-                    fflush()
-                    next
-                }
-                { print > "/dev/stderr"; fflush("/dev/stderr") }
-            ' >&2
-        )
-    }
+    # Die kleine Funktion steht separat, damit ihre echte Pipe-Ausgabe ohne
+    # Blockgerät im Linux-Test geprüft werden kann.
+    source "$(dirname -- "${BASH_SOURCE[0]}")/disk-image-pv.sh"
     PV_READ=(gui_pv read -s "$SIZE")
     PV_WRITE=(gui_pv write)
     PV_VERIFY=(gui_pv verify -s "$SIZE")

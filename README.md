@@ -30,6 +30,20 @@ cd disk-image-tool
 python3 disk-image-gui.py
 ```
 
+Im Reiter **Programm** auf **Startsymbole einrichten** klicken. Danach stehen
+im Linux-Anwendungsmenü **Datenträger sichern** (GUI) und **Datenträger sichern
+(Terminal)** (interaktive CLI mit Parameterhilfe). Alternativ im Installationsordner:
+
+```bash
+python3 install-launchers.py --install
+```
+
+Das ohne `sudo` ausführen. Die Starter gehören nur zum aktuellen Benutzer;
+der Installationsordner muss am selben Ort bleiben. Entfernen mit
+`python3 install-launchers.py --remove`. Im Terminal-Starter führt **1**
+durch die Sicherung, **2** zeigt alle CLI-Parameter. Direkter Aufruf bleibt
+`sudo bash disk-image.sh`, die Hilfe zeigt `bash disk-image.sh --help`.
+
 Die grafische Administrator-Abfrage benötigt einen laufenden Polkit-Agenten in
 der Desktop-Sitzung. Die Sicherung selbst fragt nach der Bestätigung nach
 Administratorrechten. Für die CLI im selben Ordner:
@@ -76,7 +90,7 @@ steht noch aus.
 
 ### Updates
 
-Im Reiter **Updates** kann die GUI nach einer neueren Version auf dem
+Im Reiter **Programm** kann die GUI nach einer neueren Version auf dem
 offiziellen GitHub-Repository suchen und sie installieren. Die Option
 **Beim Programmstart automatisch aktualisieren** führt dies künftig beim
 Start aus; sie ist zunächst ausgeschaltet. Ein Update läuft nur bei einer
@@ -170,5 +184,13 @@ sudo bash disk-image.sh --non-interactive --engine dd \
 ## Ergebnisse und Grenzen
 
 Zu jeder Sicherung gehören ein Protokoll und eine `.sha256`-Datei. Für `ddrescue` kommt die Map-Datei hinzu. Unvollständige Dateien bleiben zur Diagnose erhalten. Die `.sha256`-Datei lässt sich mit `sha256sum -c DATEI.sha256` prüfen.
+
+Wird die Sicherung über `sudo` oder die GUI mit `pkexec` gestartet, gehören
+neu erzeugtes Abbild, Protokoll, Prüfsumme und Map-Datei nach dem Lauf dem
+aufrufenden Benutzer und sind mit Modus `600` nur für ihn lesbar. Beim
+direkten Start als root ohne erkennbaren aufrufenden Benutzer bleiben die
+Dateien bei root. Unterstützt das Zielmedium Besitzer oder Dateirechte nicht,
+meldet das Skript dies. Dateien aus früheren Versionen werden nicht
+nachträglich geändert.
 
 Exit-Codes: `0` abgeschlossen; `1` Fehler; `2` Verifikation fehlgeschlagen; `3` abgeschlossen mit Lesefehlern oder nicht vollständig geretteten Bereichen; `130`/`143` unterbrochen. Ein erfolgreich lesbares Archiv ersetzt keinen Test der Wiederherstellung auf einem geeigneten Zielsystem.

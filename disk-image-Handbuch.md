@@ -237,7 +237,8 @@ Der konkrete Wiederherstellungsbefehl hängt von Format, Verschlüsselung und Zi
 
 Zusätzlich zum Terminal steht `disk-image-gui.py` bereit. Starten Sie es mit
 `python3 disk-image-gui.py` im Ordner der Skripte einschließlich
-`disk-image-runner.py` und `disk-image-mail.py`. Python 3 und Tkinter sind
+`disk-image-runner.py`, `disk_image_progress.py`, `disk-image-update.py` und
+`disk-image-mail.py`. Python 3 und Tkinter sind
 erforderlich; auf Debian/Ubuntu kann Tkinter mit `sudo apt install python3-tk`
 nachinstalliert werden. Für die Administrator-Abfrage benötigt die Sitzung
 `pkexec` und einen Polkit-Agenten. Alternativ kann die Oberfläche als root
@@ -261,11 +262,47 @@ gegebenenfalls nicht.
    Die Anleitung im nächsten Abschnitt führt durch beide Einstellungen.
 4. **Prüfen und starten:** Zusammenfassung lesen und den Start bestätigen.
    Erst dann wird nach Administratorrechten gefragt. Die Oberfläche zeigt
-   Meldungen und einen Aktivitätsbalken. Die ausführliche Protokolldatei liegt
+   Meldungen, den messbaren Fortschritt in Prozent und die Lese- und
+   Schreibrate in MiB/s. Die ausführliche Protokolldatei liegt
    im Zielordner. Die Meldungen im Fenster lassen sich mit **Kopieren** in die
    Zwischenablage übernehmen oder mit **Als Datei speichern …** als Textdatei
    sichern, auch wenn vor dem Anlegen der Protokolldatei ein Fehler auftritt.
-   Beim Unterbrechen bleibt ein begonnenes Abbild erhalten.
+   **Abbrechen** beendet den Lauf ohne Pause. Ein begonnenes Abbild bleibt
+   erhalten; nur `ddrescue` kann mit passender Map-Datei fortgesetzt werden.
+5. **Updates:** Mit **Nach Updates suchen** die offizielle GitHub-Version
+   prüfen, mit **Update installieren** übernehmen und anschließend die GUI
+   neu starten. **Beim Programmstart automatisch aktualisieren** schaltet
+   die Aktualisierung beim nächsten Start ein. Die Einstellung ist zunächst
+   ausgeschaltet. Während einer Sicherung ist ein Update gesperrt.
+
+Bei `dd` misst `pv` den gelesenen Datenstrom und die geschriebene Datei.
+Bei `ddrescue` wird der Anteil erfolgreich geretteter Bereiche aus der
+Map-Datei berechnet. Bei `fsarchiver` erscheint ein Prozentwert nur, wenn
+das Werkzeug ihn meldet. Die Raten bei `ddrescue` und `fsarchiver` stammen
+aus den logischen Ein-/Ausgaben des Prozesses und können von der tatsächlichen
+Laufwerksgeschwindigkeit abweichen. Nicht verfügbare Werte bleiben erkennbar
+unbekannt. Eine Verifikation ist ein eigener Arbeitsschritt nach der Sicherung.
+
+### Updates für Git-Installationen
+
+Die eingebaute Update-Funktion benötigt eine unveränderte Installation per
+`git clone` auf Branch `main` mit dem offiziellen Repository als `origin`.
+Eigene Änderungen und zusätzliche Dateien verhindern ein automatisches
+Update, damit sie nicht überschrieben werden. Ein installiertes Update wird
+erst nach dem Neustart der GUI wirksam. Der Update-Vorgang läuft ohne
+Administratorrechte. Die erste Aktualisierung einer älteren GUI ohne
+Update-Reiter erfolgt einmalig im Installationsordner:
+
+```bash
+git pull --ff-only
+python3 disk-image-gui.py
+```
+
+Für einen geplanten Lauf außerhalb der GUI kann als normaler Benutzer
+`python3 disk-image-update.py --apply` verwendet werden, etwa mit Cron.
+Ein Aufruf mit `--check` prüft nur. Bei einem Archivdownload ohne `.git`
+ist die eingebaute Aktualisierung nicht möglich; dafür eine Git-Kopie
+gemäß README installieren.
 
 Die GUI nutzt denselben nicht interaktiven CLI-Modus, der auch für Cron geeignet
 ist. Der Terminal-Aufruf `sudo bash disk-image.sh` und alle CLI-Parameter stehen

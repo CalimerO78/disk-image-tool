@@ -42,6 +42,7 @@ MAIL_TO=""
 MAIL_CONFIG=""
 NON_INTERACTIVE=0
 AUTO_INSTALL=0
+GUI_PROGRESS=0
 VERIFY_MODE=""
 SMART_MODE=""
 RESUME_IMAGE=""
@@ -75,6 +76,7 @@ Ohne Optionen führt das Skript durch die Auswahl. Für Cron sind
 --verify | --no-verify            Gespeichertes Abbild prüfen oder überspringen
 --non-interactive                 Keine Rückfragen; fehlende Angaben sind Fehler
 --auto-install                    Fehlende Pakete ohne Rückfrage installieren
+--gui-progress                    Maschinenlesbare Fortschrittsdaten für die GUI
 --help                            Diese Hilfe anzeigen
 
 Beispiel: sudo bash disk-image.sh --non-interactive --engine dd \
@@ -88,6 +90,7 @@ while (( $# > 0 )); do
         --help) usage; exit 0 ;;
         --non-interactive) NON_INTERACTIVE=1; shift ;;
         --auto-install) AUTO_INSTALL=1; shift ;;
+        --gui-progress) GUI_PROGRESS=1; shift ;;
         --verify) VERIFY_MODE=yes; shift ;;
         --no-verify) VERIFY_MODE=no; shift ;;
         --engine|--source|--dest|--compression|--on-read-error|--mounted|--resume-image|--age-recipient|--age-identity|--ssh-host|--ssh-path|--notify|--mail-to|--mail-config|--smart)
@@ -247,6 +250,7 @@ check_prerequisites() {
     esac
     [[ -z "$AGE_RECIPIENT" ]] || required+=(age)
     [[ -z "$SSH_HOST" ]] || required+=(ssh)
+    (( ! GUI_PROGRESS )) || required+=(python3)
     case "$NOTIFY_MODE" in desktop) required+=(notify-send) ;;
         mail) [[ -n "$MAIL_CONFIG" ]] || required+=(mail) ;; esac
 
@@ -263,6 +267,7 @@ check_prerequisites() {
             ssh) package=openssh-client ;;
             notify-send) package=libnotify-bin ;;
             mail) package=bsd-mailx ;;
+            python3) package=python3 ;;
             awk) package=mawk ;;
             grep) package=grep ;;
             *) package=coreutils ;;
@@ -577,6 +582,12 @@ set -C # Vorhandene Zieldateien niemals durch eine parallele Ausführung ersetze
 : > "$LOG" || die "Protokoll konnte nicht erstellt werden."
 LOG_READY=1
 RUN_STARTED=1
+if (( GUI_PROGRESS )); then
+    # Ein JSON-Datensatz informiert den GUI-Vermittler über Pfade und Größe.
+    # Python ist für die GUI ohnehin vorhanden und kodiert Sonderzeichen sicher.
+    python3 -c 'import json,sys; print("@@DISK_IMAGE_META " + json.dumps(dict(engine=sys.argv[1],size=int(sys.argv[2]),image=sys.argv[3],mapfile=sys.argv[4],log=sys.argv[5])), flush=True)' \
+        "$ENGINE" "$SIZE" "$IMG" "$MAPFILE" "$LOG"
+fi
 log "Start: Quelle=$SRC, Größe=$SIZE Bytes, Ziel=$IMG, Modus=$MODE, Blockgröße=$BS"
 lsblk -o NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS "$SRC" >> "$LOG" 2>&1
 if command -v sfdisk >/dev/null 2>&1; then
@@ -619,7 +630,9 @@ if [[ "$ENGINE" != dd ]]; then
             result=3
         fi
     else
-        fsarchiver savefs "$IMG" "$SRC" >> "$LOG" 2>&1 \
+        fsarchive_args=()
+        (( ! GUI_PROGRESS )) || fsarchive_args=(-v)
+        fsarchiver "${fsarchive_args[@]}" savefs "$IMG" "$SRC" >> "$LOG" 2>&1 \
             || die "fsarchiver fehlgeschlagen; unvollständiges Archiv bleibt erhalten."
     fi
     sync -f "$IMG" || die "Abbild konnte nicht zuverlässig geschrieben werden."
@@ -651,21 +664,31 @@ mkfifo -- "$TEMP_DIR/raw.fifo" || die "Hash-Pipe konnte nicht erstellt werden."
 sha256sum < "$TEMP_DIR/raw.fifo" > "$TEMP_DIR/raw.sha256" &
 HASH_PID=$!
 start="$(date +%s)"
+PV_READ=(pv -petrab -s "$SIZE" -N "$(basename "$SRC")")
+PV_WRITE=(cat)
+PV_VERIFY=(pv -petrab -s "$SIZE" -N verify)
+if (( GUI_PROGRESS )); then
+    PV_READ=(pv -n -s "$SIZE" -F '@@DISK_IMAGE_PROGRESS {"kind":"read","bytes":%b,"rate":%r}')
+    PV_WRITE=(pv -n -F '@@DISK_IMAGE_PROGRESS {"kind":"write","bytes":%b,"rate":%r}')
+    PV_VERIFY=(pv -n -s "$SIZE" -F '@@DISK_IMAGE_PROGRESS {"kind":"verify","bytes":%b,"rate":%r}')
+fi
 
 # dd meldet Lesefehler auf stderr. Bei conv=noerror,sync kann es trotzdem 0
 # zurückgeben; deshalb wird auch die Fehlermeldung geprüft.
 if [[ -n "$AGE_RECIPIENT" ]]; then
     LC_ALL=C dd if="$SRC" bs="$BS" iflag=fullblock "${DD_CONV[@]}" status=none 2> "$TEMP_DIR/dd.stderr" \
-        | pv -petrab -s "$SIZE" -N "$(basename "$SRC")" \
+        | "${PV_READ[@]}" \
         | tee "$TEMP_DIR/raw.fifo" \
         | "${COMP[@]}" 2> "$TEMP_DIR/comp.stderr" \
-        | age -r "$AGE_RECIPIENT" > "$IMG" 2> "$TEMP_DIR/age.stderr"
+        | age -r "$AGE_RECIPIENT" 2> "$TEMP_DIR/age.stderr" \
+        | "${PV_WRITE[@]}" > "$IMG"
     pipeline_rc=("${PIPESTATUS[@]}")
 else
     LC_ALL=C dd if="$SRC" bs="$BS" iflag=fullblock "${DD_CONV[@]}" status=none 2> "$TEMP_DIR/dd.stderr" \
-        | pv -petrab -s "$SIZE" -N "$(basename "$SRC")" \
+        | "${PV_READ[@]}" \
         | tee "$TEMP_DIR/raw.fifo" \
-        | "${COMP[@]}" > "$IMG" 2> "$TEMP_DIR/comp.stderr"
+        | "${COMP[@]}" 2> "$TEMP_DIR/comp.stderr" \
+        | "${PV_WRITE[@]}" > "$IMG"
     pipeline_rc=("${PIPESTATUS[@]}")
 fi
 wait "$HASH_PID"
@@ -700,13 +723,13 @@ if [[ "$VERIFY_MODE" == yes ]]; then
     if [[ -n "$AGE_RECIPIENT" ]]; then
         age -d -i "$AGE_IDENTITY" < "$IMG" 2> "$TEMP_DIR/verify-age.stderr" \
             | "${DECOMP[@]}" 2> "$TEMP_DIR/verify.stderr" \
-            | pv -petrab -s "$SIZE" -N verify \
+            | "${PV_VERIFY[@]}" \
             | sha256sum > "$TEMP_DIR/verify.sha256"
         verify_rc=("${PIPESTATUS[@]}")
         cat -- "$TEMP_DIR/verify-age.stderr" >> "$LOG"
     else
         "${DECOMP[@]}" < "$IMG" 2> "$TEMP_DIR/verify.stderr" \
-            | pv -petrab -s "$SIZE" -N verify \
+            | "${PV_VERIFY[@]}" \
             | sha256sum > "$TEMP_DIR/verify.sha256"
         verify_rc=("${PIPESTATUS[@]}")
     fi

@@ -45,7 +45,8 @@ Benötigt werden Python 3 mit Tkinter, `lsblk` und für eine grafische
 Administrator-Anmeldung `pkexec` mit einem laufenden Polkit-Agenten. Unter
 Debian/Ubuntu lässt sich Tkinter bei Bedarf mit `sudo apt install python3-tk`
 installieren. Danach im Ordner mit `disk-image.sh`, `disk-image-gui.py`,
-`disk-image-runner.py` und `disk-image-mail.py` starten:
+`disk-image-runner.py`, `disk_image_progress.py`, `disk-image-update.py`
+und `disk-image-mail.py` starten:
 
 ```bash
 python3 disk-image-gui.py
@@ -60,13 +61,34 @@ mit STARTTLS beziehungsweise SSL/TLS, Empfängeradresse und Testmail. Im vierten
 und den Start bestätigen. Die Administrator-Abfrage erscheint erst beim Start.
 Die Quelle wird kurz vor dem eigentlichen Lesen im Skript erneut geprüft.
 
-Die GUI zeigt den laufenden Status und die Skriptausgabe. Einige Werkzeuge
-schreiben ausführliche Fortschrittsdaten nur in die Protokolldatei; deshalb
-läuft währenddessen eine Aktivitätsanzeige. **Unterbrechen** erhält ein bereits
-angefangenes Abbild zur Diagnose. Im letzten Reiter können die sichtbaren
+Die GUI zeigt, soweit messbar, den Fortschritt in Prozent und die Lese- und
+Schreibrate in MiB/s. Bei `dd` stammen die Werte aus dem laufenden Datenstrom.
+Bei `ddrescue` kommt der Prozentwert aus der Map-Datei; bei `fsarchiver` wird
+er nur angezeigt, wenn das Programm ihn ausdrücklich meldet. Die Raten dieser
+beiden Werkzeuge stammen aus den logischen Prozess-Ein-/Ausgaben und sind keine
+physikalischen Laufwerksmessungen. Fehlt ein Messwert, steht dort „—“ oder
+„Prozent nicht verfügbar“. **Abbrechen** beendet den Lauf; es pausiert ihn
+nicht. Ein begonnenes Abbild bleibt zur Diagnose erhalten. Nur `ddrescue` kann
+mit Abbild und Map-Datei später fortgesetzt werden. Im vierten Reiter können die sichtbaren
 Meldungen mit **Kopieren** in die Zwischenablage oder mit **Als Datei speichern …**
 als Textdatei gesichert werden. Ein vollständiger Linux-Hardwaretest der GUI
 steht noch aus.
+
+### Updates
+
+Im Reiter **Updates** kann die GUI nach einer neueren Version auf dem
+offiziellen GitHub-Repository suchen und sie installieren. Die Option
+**Beim Programmstart automatisch aktualisieren** führt dies künftig beim
+Start aus; sie ist zunächst ausgeschaltet. Ein Update läuft nur bei einer
+unveränderten `git clone`-Installation auf `main`. Bei eigenen Änderungen
+oder einem anderen Bezugsort zeigt das Programm eine Fehlermeldung. Nach
+einem installierten Update die GUI mit dem angebotenen Knopf neu starten.
+Während Sicherung oder Update läuft, ist die jeweils andere Aktion gesperrt.
+
+Wer bereits eine ältere Version ohne Update-Reiter installiert hat, führt
+einmalig im Installationsordner `git pull --ff-only` aus und startet die GUI
+neu. Für eine automatische Aktualisierung ohne GUI kann ein geplanter Lauf
+`python3 disk-image-update.py --apply` als normaler Benutzer aufrufen.
 
 ## Interaktiver Start
 

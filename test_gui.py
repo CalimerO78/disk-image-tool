@@ -41,6 +41,7 @@ class CommandTests(unittest.TestCase):
                 self.assertEqual(args[args.index(option) + 1], value)
             self.assertIn("--no-verify", args)
             self.assertIn("--auto-install", args)
+            self.assertIn("--gui-progress", args)
 
     def test_fsarchiver_rejects_mounted_source(self):
         with tempfile.TemporaryDirectory() as destination:
@@ -138,6 +139,19 @@ class CommandTests(unittest.TestCase):
                 self.assertIn("FEHLER: Beispiel-Einhängepunkt", output.read_text(encoding="utf-8"))
             finally:
                 app.destroy()
+
+    def test_progress_uses_measured_bytes_and_rates(self):
+        app = gui.App()
+        try:
+            app.source_size = 1000
+            app._show_progress({"kind": "read", "bytes": 250, "rate": 1048576})
+            self.assertEqual(app.progress.cget("value"), 25)
+            self.assertIn("25.0 %", app.progress_label.get())
+            self.assertIn("1.0 MiB/s", app.speed_label.get())
+            app._show_progress({"kind": "write", "bytes": 100, "rate": 2097152})
+            self.assertIn("2.0 MiB/s", app.speed_label.get())
+        finally:
+            app.destroy()
 
 
 if __name__ == "__main__":

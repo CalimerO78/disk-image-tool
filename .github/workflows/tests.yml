@@ -15,5 +15,5 @@ jobs:
         run: |
           bash -n disk-image.sh
           bash disk-image.sh --help >/dev/null
-      - name: GUI und Mail-Übergabe prüfen
-        run: xvfb-run -a python3 -m unittest -v test_gui.py
+      - name: GUI, Fortschritt und Updates prüfen
+        run: xvfb-run -a python3 -m unittest -v test_gui.py test_progress.py test_update.py

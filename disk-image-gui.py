@@ -15,6 +15,7 @@ import re
 import runpy
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import tkinter as tk
@@ -27,6 +28,8 @@ SCRIPT = Path(__file__).resolve().with_name("disk-image.sh")
 RUNNER = Path(__file__).resolve().with_name("disk-image-runner.py")
 MAIL_HELPER = Path(__file__).resolve().with_name("disk-image-mail.py")
 MAIL_CONFIG = Path.home() / ".config" / "disk-image-tool" / "mail.json"
+UPDATE_TOOL = Path(__file__).resolve().with_name("disk-image-update.py")
+UPDATE_PREFS = Path.home() / ".config" / "disk-image-tool" / "update.json"
 COMPRESSION = {"Keine (unverändertes Abbild)": "none", "gzip (kleinere Datei)": "gzip",
                "zstd (schnell und platzsparend)": "zstd"}
 READ_ERROR = {"Fortfahren, Fehler mit Nullen füllen": "continue",
@@ -126,6 +129,7 @@ def build_command(settings: Settings, script: Path = SCRIPT) -> list[str]:
             "--mounted", settings.mounted, "--smart", settings.smart,
             "--notify", settings.notify,
             "--verify" if settings.verify else "--no-verify"]
+    args.append("--gui-progress")
     if settings.auto_install:
         args.append("--auto-install")
     if settings.engine == "dd":
@@ -180,6 +184,11 @@ class App(tk.Tk):
         style.configure("TNotebook.Tab", padding=(12, 8))
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.process: subprocess.Popen[str] | None = None
+        self.update_running = False
+        self.update_installed = False
+        self.source_size = 0
+        self.read_rate: float | None = None
+        self.write_rate: float | None = None
         self.devices: dict[str, dict] = {}
 
         self.engine = tk.StringVar(value="dd")
@@ -207,12 +216,18 @@ class App(tk.Tk):
         self.verify = tk.BooleanVar(value=True)
         self.auto_install = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Bereit")
+        self.progress_label = tk.StringVar(value="Fortschritt: —")
+        self.speed_label = tk.StringVar(value="Lesen: —   ·   Schreiben: —")
+        self.auto_update = tk.BooleanVar(value=self._load_update_preference())
+        self.update_status = tk.StringVar(value="Noch nicht geprüft.")
 
         self._build()
         self._load_mail_config()
         self._refresh_devices()
         self._engine_changed()
         self.after(100, self._drain_events)
+        if self.auto_update.get():
+            self.after(700, lambda: self._run_update(apply=True, automatic=True))
         self.protocol("WM_DELETE_WINDOW", self._close)
 
     def _build(self) -> None:
@@ -226,10 +241,12 @@ class App(tk.Tk):
         self.options = ttk.Frame(self.tabs, padding=18)
         self.mail_tab = ttk.Frame(self.tabs, padding=18)
         self.run_tab = ttk.Frame(self.tabs, padding=18)
+        self.update_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.basic, text="1  Quelle und Ziel")
         self.tabs.add(self.options, text="2  Weitere Optionen")
         self.tabs.add(self.mail_tab, text="3  E-Mail")
         self.tabs.add(self.run_tab, text="4  Prüfen und starten")
+        self.tabs.add(self.update_tab, text="5  Updates")
         for frame in (self.basic, self.options, self.mail_tab):
             frame.columnconfigure(1, weight=1)
 
@@ -344,9 +361,13 @@ class App(tk.Tk):
         buttons.pack(fill="x", pady=8)
         self.start_button = ttk.Button(buttons, text="Sicherung starten", command=self._start)
         self.start_button.pack(side="left")
-        self.stop_button = ttk.Button(buttons, text="Unterbrechen", command=self._stop, state="disabled")
+        self.stop_button = ttk.Button(buttons, text="Abbrechen", command=self._stop, state="disabled")
         self.stop_button.pack(side="left", padx=8)
         ttk.Label(buttons, textvariable=self.status).pack(side="right")
+        progress_info = ttk.Frame(self.run_tab)
+        progress_info.pack(fill="x", pady=(8, 0))
+        ttk.Label(progress_info, textvariable=self.progress_label).pack(side="left")
+        ttk.Label(progress_info, textvariable=self.speed_label).pack(side="right")
         self.progress = ttk.Progressbar(self.run_tab, mode="indeterminate", value=0)
         self.progress.pack(fill="x", pady=5)
         log_buttons = ttk.Frame(self.run_tab)
@@ -359,6 +380,34 @@ class App(tk.Tk):
         self.output.pack(fill="both", expand=True, pady=(8, 0))
         self.log_action_status = ttk.Label(self.run_tab, text="")
         self.log_action_status.pack(anchor="w", pady=(4, 0))
+
+        ttk.Label(self.update_tab, text="Programm aktualisieren",
+                  font=("Sans", 15, "bold")).pack(anchor="w", pady=(0, 14))
+        ttk.Label(self.update_tab,
+                  text="Updates kommen ausschließlich aus CalimerO78/disk-image-tool. "
+                       "Lokale Änderungen und abweichende Git-Quellen sperren ein automatisches Update.",
+                  wraplength=650).pack(anchor="w", pady=(0, 15))
+        ttk.Checkbutton(self.update_tab,
+                        text="Bei jedem Programmstart automatisch prüfen und installieren",
+                        variable=self.auto_update,
+                        command=self._save_update_preference).pack(anchor="w", pady=(0, 14))
+        update_buttons = ttk.Frame(self.update_tab)
+        update_buttons.pack(anchor="w")
+        self.check_update_button = ttk.Button(update_buttons, text="Nach Updates suchen",
+                                              command=lambda: self._run_update(apply=False))
+        self.check_update_button.pack(side="left")
+        self.apply_update_button = ttk.Button(update_buttons, text="Update installieren",
+                                              command=lambda: self._run_update(apply=True))
+        self.apply_update_button.pack(side="left", padx=8)
+        self.restart_button = ttk.Button(update_buttons, text="Programm neu starten",
+                                         command=self._restart, state="disabled")
+        self.restart_button.pack(side="left")
+        ttk.Label(self.update_tab, textvariable=self.update_status,
+                  wraplength=650).pack(anchor="w", pady=18)
+        ttk.Label(self.update_tab,
+                  text="Bei einer Installation aus einem ZIP-Archiv fehlen Git-Daten. "
+                       "Für automatische Updates das Repository einmal mit git clone installieren.",
+                  wraplength=650).pack(anchor="w")
         self.tabs.bind("<<NotebookTabChanged>>", lambda _e: self._show_summary()
                        if self.tabs.index("current") == 3 else None)
         self._notify_changed()
@@ -692,7 +741,88 @@ class App(tk.Tk):
             return
         self.log_action_status.configure(text=f"Meldungen gespeichert: {path}")
 
+    @staticmethod
+    def _load_update_preference() -> bool:
+        try:
+            data = json.loads(UPDATE_PREFS.read_text(encoding="utf-8"))
+            return data.get("auto_update_on_start") is True
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    def _save_update_preference(self) -> None:
+        """Die freiwillige Startautomatik getrennt von SMTP-Zugangsdaten halten."""
+
+        temporary = None
+        try:
+            folder = UPDATE_PREFS.parent
+            if folder.is_symlink() or UPDATE_PREFS.is_symlink():
+                raise OSError("Der Einstellungsordner darf kein symbolischer Link sein.")
+            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=folder,
+                                             prefix=".update-", delete=False) as output:
+                temporary = Path(output.name)
+                os.chmod(temporary, 0o600)
+                json.dump({"auto_update_on_start": self.auto_update.get()}, output)
+                output.write("\n")
+            os.replace(temporary, UPDATE_PREFS)
+            self.update_status.set("Automatische Updates " +
+                                   ("aktiviert." if self.auto_update.get() else "deaktiviert."))
+        except OSError as exc:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+            self.auto_update.set(False)
+            messagebox.showerror("Einstellung konnte nicht gespeichert werden", str(exc))
+
+    def _run_update(self, *, apply: bool, automatic: bool = False) -> None:
+        if self.update_running:
+            return
+        if self.process is not None:
+            self.update_status.set("Während einer Sicherung sind Updates gesperrt.")
+            return
+        if platform.system() != "Linux":
+            self.update_status.set("Die Update-Funktion ist für die Linux-Installation vorgesehen.")
+            return
+        if not UPDATE_TOOL.is_file():
+            self.update_status.set("Das Update-Programm fehlt. Bitte eine aktuelle Git-Kopie installieren.")
+            return
+        self.update_running = True
+        self.check_update_button.configure(state="disabled")
+        self.apply_update_button.configure(state="disabled")
+        self.update_status.set("Suche auf GitHub nach Updates …" if not apply else
+                               "Prüfe und installiere ein verfügbares Update …")
+        threading.Thread(target=self._update_worker, args=(apply, automatic), daemon=True).start()
+
+    def _update_worker(self, apply: bool, automatic: bool) -> None:
+        try:
+            result = subprocess.run(
+                [sys.executable, str(UPDATE_TOOL), "--apply" if apply else "--check", "--json"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=150, check=False,
+            )
+            data = json.loads(result.stdout)
+            if not isinstance(data, dict):
+                raise ValueError("Ungültige Update-Antwort")
+        except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+            data = {"state": "error", "message": f"Update-Prüfung fehlgeschlagen: {exc}"}
+        self.events.put(("update_done", data))
+
+    def _restart(self) -> None:
+        if self.process is not None or self.update_running:
+            self.update_status.set("Bitte erst den laufenden Vorgang beenden.")
+            return
+        try:
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve())],
+                             start_new_session=True)
+        except OSError as exc:
+            messagebox.showerror("Neustart fehlgeschlagen", str(exc))
+            return
+        self.destroy()
+
     def _start(self) -> None:
+        if self.update_running or self.update_installed:
+            messagebox.showinfo("Programm-Update",
+                                "Bitte das Update abschließen und das Programm neu starten, bevor eine Sicherung beginnt.")
+            return
         if platform.system() != "Linux":
             messagebox.showerror("Linux erforderlich", "Die Sicherung kann nur unter Linux gestartet werden.")
             return
@@ -728,6 +858,11 @@ class App(tk.Tk):
         self._replace(self.output, "")
         self.log_action_status.configure(text="")
         self.status.set("Sicherung läuft …")
+        self.source_size = 0
+        self.read_rate = self.write_rate = None
+        self.progress_label.set("Vorbereitung · Fortschritt: —")
+        self.speed_label.set("Lesen: —   ·   Schreiben: —")
+        self.progress.configure(mode="indeterminate", value=0)
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.progress.start(12)
@@ -743,7 +878,18 @@ class App(tk.Tk):
                                             start_new_session=True)
             assert self.process.stdout is not None
             for line in self.process.stdout:
-                self.events.put(("output", line))
+                if line.startswith("@@DISK_IMAGE_META "):
+                    try:
+                        self.events.put(("progress_meta", json.loads(line.removeprefix("@@DISK_IMAGE_META "))))
+                    except json.JSONDecodeError:
+                        self.events.put(("output", line))
+                elif line.startswith("@@DISK_IMAGE_PROGRESS "):
+                    try:
+                        self.events.put(("progress_value", json.loads(line.removeprefix("@@DISK_IMAGE_PROGRESS "))))
+                    except json.JSONDecodeError:
+                        self.events.put(("output", line))
+                else:
+                    self.events.put(("output", line))
             self.events.put(("done", self.process.wait()))
         except OSError as exc:
             self.events.put(("error", str(exc)))
@@ -756,12 +902,33 @@ class App(tk.Tk):
                 kind, value = self.events.get_nowait()
                 if kind == "output":
                     self._append(str(value))
+                elif kind == "progress_meta" and isinstance(value, dict):
+                    self.source_size = int(value.get("size") or 0)
+                elif kind == "progress_value" and isinstance(value, dict):
+                    self._show_progress(value)
                 elif kind == "mail_test_done":
                     self.mail_status.configure(text=str(value))
                     self.mail_test_button.configure(state="normal" if self.notify.get() == "E-Mail" else "disabled")
+                elif kind == "update_done":
+                    self.update_running = False
+                    self.check_update_button.configure(state="normal")
+                    self.apply_update_button.configure(state="normal")
+                    data = value if isinstance(value, dict) else {"state": "error"}
+                    state = data.get("state")
+                    if state == "updated":
+                        self.update_installed = True
+                        self.restart_button.configure(state="normal")
+                        self.update_status.set("Update installiert. Bitte das Programm jetzt neu starten.")
+                    elif state == "available":
+                        self.update_status.set("Ein Update ist verfügbar. Mit „Update installieren“ übernehmen.")
+                    elif state == "current":
+                        self.update_status.set("Das Programm ist aktuell.")
+                    else:
+                        self.update_status.set("Update nicht möglich: " + str(data.get("message", "Unbekannter Fehler")))
                 elif kind in {"done", "error"}:
                     self.progress.stop()
-                    self.progress.configure(value=0)
+                    if kind == "done" and int(value) == 0:
+                        self.progress.configure(mode="determinate", value=100)
                     self.start_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
                     if kind == "error":
@@ -780,22 +947,63 @@ class App(tk.Tk):
             pass
         self.after(100, self._drain_events)
 
+    @staticmethod
+    def _speed_text(rate: float | None) -> str:
+        if rate is None:
+            return "—"
+        return f"{max(0.0, rate) / 1048576:.1f} MiB/s"
+
+    def _show_progress(self, data: dict) -> None:
+        """Nur gelieferte Messwerte anzeigen, niemals Prozent schätzen."""
+
+        kind = data.get("kind")
+        phase = {"read": "Quelle lesen", "write": "Abbild schreiben",
+                 "verify": "Inhalt prüfen", "ddrescue": "Daten retten",
+                 "fsarchiver": "Partition archivieren"}.get(kind, "Sicherung")
+        percent = data.get("percent")
+        if kind in {"read", "verify"}:
+            if self.source_size > 0 and isinstance(data.get("bytes"), (int, float)):
+                percent = 100 * data["bytes"] / self.source_size
+            if isinstance(data.get("rate"), (int, float)):
+                self.read_rate = data["rate"]
+            if kind == "verify":
+                self.write_rate = None
+        elif kind == "write" and isinstance(data.get("rate"), (int, float)):
+            self.write_rate = data["rate"]
+        elif kind in {"ddrescue", "fsarchiver"}:
+            self.read_rate = data.get("read_bps") if isinstance(data.get("read_bps"), (int, float)) else None
+            self.write_rate = data.get("write_bps") if isinstance(data.get("write_bps"), (int, float)) else None
+        if isinstance(percent, (int, float)):
+            percent = max(0.0, min(100.0, percent))
+            self.progress.stop()
+            self.progress.configure(mode="determinate", value=percent)
+            self.progress_label.set(f"{phase}: {percent:.1f} %")
+        elif kind != "write":
+            self.progress_label.set(f"{phase}: Prozent nicht verfügbar")
+        self.speed_label.set(f"Lesen: {self._speed_text(self.read_rate)}   ·   "
+                             f"Schreiben: {self._speed_text(self.write_rate)}")
+
     def _stop(self) -> None:
         if self.process and messagebox.askyesno(
-                "Sicherung unterbrechen", "Das angefangene Abbild bleibt erhalten. Wirklich unterbrechen?",
+                "Sicherung abbrechen", "Der Lauf wird beendet, nicht pausiert. "
+                "Das angefangene Abbild bleibt erhalten. Nur ddrescue kann mit Map-Datei später fortgesetzt werden. "
+                "Wirklich abbrechen?",
                 default="no"):
             try:
                 assert self.process.stdin is not None
                 self.process.stdin.write("cancel\n")
                 self.process.stdin.flush()
-                self.status.set("Unterbrechung angefordert …")
+                self.status.set("Abbruch angefordert …")
                 self.stop_button.configure(state="disabled")
             except (BrokenPipeError, OSError):
-                messagebox.showwarning("Unterbrechung", "Der Lauf antwortet nicht mehr. Bitte die Ausgabe prüfen.")
+                messagebox.showwarning("Abbruch", "Der Lauf antwortet nicht mehr. Bitte die Ausgabe prüfen.")
 
     def _close(self) -> None:
+        if self.update_running:
+            messagebox.showinfo("Update läuft", "Bitte die Update-Prüfung zuerst abschließen lassen.")
+            return
         if self.process is not None:
-            messagebox.showinfo("Sicherung läuft", "Bitte den laufenden Vorgang zuerst unterbrechen oder abschließen lassen.")
+            messagebox.showinfo("Sicherung läuft", "Bitte den laufenden Vorgang zuerst abbrechen oder abschließen lassen.")
         else:
             self.destroy()
 

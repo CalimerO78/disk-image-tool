@@ -90,7 +90,8 @@ class RestoreTests(unittest.TestCase):
             return SimpleNamespace(stdout="100\n")
         self.mountpoint = "/mnt/used"
         with patch.dict(restore["device_plan"].__globals__, {"subprocess": SimpleNamespace(run=fake_run)}), \
-             patch("os.stat", side_effect=fake_stat):
+             patch("os.stat", side_effect=fake_stat), \
+             patch.object(Path, "read_text", return_value="Filename Type Size Used Priority\n"):
             with self.assertRaisesRegex(restore["RestoreError"], "eingehängt"):
                 restore["device_plan"](target, image, "raw", 80)
             self.mountpoint = None

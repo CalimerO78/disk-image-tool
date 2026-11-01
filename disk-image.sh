@@ -668,9 +668,25 @@ PV_READ=(pv -petrab -s "$SIZE" -N "$(basename "$SRC")")
 PV_WRITE=(cat)
 PV_VERIFY=(pv -petrab -s "$SIZE" -N verify)
 if (( GUI_PROGRESS )); then
-    PV_READ=(pv -n -s "$SIZE" -F '@@DISK_IMAGE_PROGRESS {"kind":"read","bytes":%b,"rate":%r}')
-    PV_WRITE=(pv -n -F '@@DISK_IMAGE_PROGRESS {"kind":"write","bytes":%b,"rate":%r}')
-    PV_VERIFY=(pv -n -s "$SIZE" -F '@@DISK_IMAGE_PROGRESS {"kind":"verify","bytes":%b,"rate":%r}')
+    # pv 1.8 ignoriert -F im numerischen Modus. -n -b -r liefert zwei
+    # Zahlen pro Zeile; awk ergänzt den Typ und spült jede Zeile sofort.
+    gui_pv() {
+        local kind="$1"
+        shift
+        pv -n -b -r "$@" 2> >(
+            awk -v kind="$kind" '
+                $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+([.][0-9]+)?$/ {
+                    printf "@@DISK_IMAGE_PROGRESS {\"kind\":\"%s\",\"bytes\":%s,\"rate\":%s}\n", kind, $1, $2
+                    fflush()
+                    next
+                }
+                { print > "/dev/stderr"; fflush("/dev/stderr") }
+            ' >&2
+        )
+    }
+    PV_READ=(gui_pv read -s "$SIZE")
+    PV_WRITE=(gui_pv write)
+    PV_VERIFY=(gui_pv verify -s "$SIZE")
 fi
 
 # dd meldet Lesefehler auf stderr. Bei conv=noerror,sync kann es trotzdem 0

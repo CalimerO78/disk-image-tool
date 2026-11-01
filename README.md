@@ -63,7 +63,9 @@ Die Quelle wird kurz vor dem eigentlichen Lesen im Skript erneut geprüft.
 Die GUI zeigt den laufenden Status und die Skriptausgabe. Einige Werkzeuge
 schreiben ausführliche Fortschrittsdaten nur in die Protokolldatei; deshalb
 läuft währenddessen eine Aktivitätsanzeige. **Unterbrechen** erhält ein bereits
-angefangenes Abbild zur Diagnose. Ein vollständiger Linux-Hardwaretest der GUI
+angefangenes Abbild zur Diagnose. Im letzten Reiter können die sichtbaren
+Meldungen mit **Kopieren** in die Zwischenablage oder mit **Als Datei speichern …**
+als Textdatei gesichert werden. Ein vollständiger Linux-Hardwaretest der GUI
 steht noch aus.
 
 ## Interaktiver Start

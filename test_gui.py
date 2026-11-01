@@ -125,6 +125,20 @@ class CommandTests(unittest.TestCase):
                 finally:
                     app.destroy()
 
+    def test_visible_log_can_be_copied_and_saved(self):
+        with tempfile.TemporaryDirectory() as destination:
+            output = Path(destination) / "meldungen.txt"
+            app = gui.App()
+            try:
+                app._append("FEHLER: Beispiel-Einhängepunkt\n")
+                app._copy_output()
+                self.assertEqual(app.clipboard_get(), "FEHLER: Beispiel-Einhängepunkt\n")
+                with patch.object(gui.filedialog, "asksaveasfilename", return_value=str(output)):
+                    app._save_output()
+                self.assertIn("FEHLER: Beispiel-Einhängepunkt", output.read_text(encoding="utf-8"))
+            finally:
+                app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

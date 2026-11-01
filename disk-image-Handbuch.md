@@ -221,6 +221,8 @@ Bei interaktiver Nutzung werden nicht gesetzte Optionen abgefragt. Eine nicht un
 
 **SMART liefert keinen Status:** Verbindung oder USB-Gehäuse können die Abfrage verhindern. Die Sicherung kann im interaktiven Modus dennoch fortgesetzt werden; der fehlende Status sagt nichts über die Gesundheit aus.
 
+**SMART meldet „Unknown USB bridge“:** Der USB-Adapter leitet die Standardabfrage nicht durch. Das Skript rät keinen Gerätetyp und setzt die Sicherung ohne SMART-Bewertung fort. Für eine gesonderte SMART-Prüfung den vom Hersteller unterstützten Adapter- beziehungsweise Gerätetyp ermitteln.
+
 **SSH-Kopie schlägt fehl:** Anmeldung, Zielordner, Rechte und vorhandene Zieldateien prüfen. Die lokale Datei bleibt erhalten. Die entfernte Teil-Datei wird nicht automatisch gelöscht.
 
 **Mail kommt nicht an:** Das Skript nutzt das lokale Programm `mail`. Die tatsächliche Zustellung hängt von dessen Konfiguration und einem Mail-Transport ab.
@@ -260,7 +262,10 @@ gegebenenfalls nicht.
 4. **Prüfen und starten:** Zusammenfassung lesen und den Start bestätigen.
    Erst dann wird nach Administratorrechten gefragt. Die Oberfläche zeigt
    Meldungen und einen Aktivitätsbalken. Die ausführliche Protokolldatei liegt
-   im Zielordner. Beim Unterbrechen bleibt ein begonnenes Abbild erhalten.
+   im Zielordner. Die Meldungen im Fenster lassen sich mit **Kopieren** in die
+   Zwischenablage übernehmen oder mit **Als Datei speichern …** als Textdatei
+   sichern, auch wenn vor dem Anlegen der Protokolldatei ein Fehler auftritt.
+   Beim Unterbrechen bleibt ein begonnenes Abbild erhalten.
 
 Die GUI nutzt denselben nicht interaktiven CLI-Modus, der auch für Cron geeignet
 ist. Der Terminal-Aufruf `sudo bash disk-image.sh` und alle CLI-Parameter stehen

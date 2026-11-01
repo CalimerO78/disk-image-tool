@@ -349,9 +349,16 @@ class App(tk.Tk):
         ttk.Label(buttons, textvariable=self.status).pack(side="right")
         self.progress = ttk.Progressbar(self.run_tab, mode="indeterminate", value=0)
         self.progress.pack(fill="x", pady=5)
+        log_buttons = ttk.Frame(self.run_tab)
+        log_buttons.pack(fill="x", pady=(8, 2))
+        ttk.Label(log_buttons, text="Meldungen dieses Laufs").pack(side="left")
+        ttk.Button(log_buttons, text="Kopieren", command=self._copy_output).pack(side="right", padx=(8, 0))
+        ttk.Button(log_buttons, text="Als Datei speichern …", command=self._save_output).pack(side="right")
         self.output = scrolledtext.ScrolledText(self.run_tab, height=12, wrap="word",
                                                 font=("TkFixedFont", 10), state="disabled")
         self.output.pack(fill="both", expand=True, pady=(8, 0))
+        self.log_action_status = ttk.Label(self.run_tab, text="")
+        self.log_action_status.pack(anchor="w", pady=(4, 0))
         self.tabs.bind("<<NotebookTabChanged>>", lambda _e: self._show_summary()
                        if self.tabs.index("current") == 3 else None)
         self._notify_changed()
@@ -653,6 +660,38 @@ class App(tk.Tk):
         self.output.see("end")
         self.output.configure(state="disabled")
 
+    def _copy_output(self) -> None:
+        """Auch Fehlermeldungen vor Erzeugung der Protokolldatei kopierbar machen."""
+
+        content = self.output.get("1.0", "end-1c")
+        if not content:
+            self.log_action_status.configure(text="Noch keine Meldungen vorhanden.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(content)
+        self.update_idletasks()
+        self.log_action_status.configure(text="Meldungen in die Zwischenablage kopiert.")
+
+    def _save_output(self) -> None:
+        """Den sichtbaren Verlauf unabhängig vom Sicherungsprotokoll speichern."""
+
+        content = self.output.get("1.0", "end-1c")
+        if not content:
+            self.log_action_status.configure(text="Noch keine Meldungen vorhanden.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Meldungen speichern", defaultextension=".txt",
+            filetypes=(("Textdatei", "*.txt"), ("Alle Dateien", "*.*")),
+            initialfile="disk-image-meldungen.txt")
+        if not path:
+            return
+        try:
+            Path(path).write_text(content + "\n", encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("Speichern fehlgeschlagen", str(exc))
+            return
+        self.log_action_status.configure(text=f"Meldungen gespeichert: {path}")
+
     def _start(self) -> None:
         if platform.system() != "Linux":
             messagebox.showerror("Linux erforderlich", "Die Sicherung kann nur unter Linux gestartet werden.")
@@ -687,6 +726,7 @@ class App(tk.Tk):
         if not messagebox.askyesno("Sicherung bestätigen", warning, default="no"):
             return
         self._replace(self.output, "")
+        self.log_action_status.configure(text="")
         self.status.set("Sicherung läuft …")
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")

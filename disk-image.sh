@@ -365,7 +365,11 @@ if command -v smartctl >/dev/null 2>&1; then
             if (( NON_INTERACTIVE )); then die "SMART meldet Fehler; unbeaufsichtigter Lauf abgebrochen."; fi
             ask_yn 'Trotzdem fortfahren?' N || exit 1
         elif (( smart_rc != 0 )); then
-            printf 'HINWEIS: SMART konnte nicht vollständig ermittelt werden (Status %d).\n' "$smart_rc"
+            if [[ "$SMART_TEXT" == *'Unknown USB bridge'* ]]; then
+                printf 'HINWEIS: Der USB-Adapter reicht SMART ohne passenden Gerätetyp nicht durch. Die Sicherung kann fortfahren; ein SMART-Status liegt nicht vor.\n'
+            else
+                printf 'HINWEIS: SMART konnte nicht vollständig ermittelt werden (Status %d).\n' "$smart_rc"
+            fi
         fi
     fi
 elif [[ "$SMART_MODE" != skip ]]; then
@@ -443,7 +447,9 @@ if (( ${#SOURCE_MOUNTS[@]} > 0 )); then
                     if (( ${#SOURCE_MOUNTS[i]} > ${#SOURCE_MOUNTS[longest]} )); then longest=$i; fi
                 done
                 mount_path="${SOURCE_MOUNTS[longest]}"
-                current_device="$(findmnt -n -o MAJ:MIN -M "$mount_path")" || die "Einhängepunkt hat sich geändert: $mount_path"
+                # -M kann bei übereinanderliegenden Mounts mehrere Einträge
+                # liefern. -T ermittelt genau den jetzt sichtbaren Eintrag.
+                current_device="$(findmnt -nro MAJ:MIN -T "$mount_path")" || die "Einhängepunkt hat sich geändert: $mount_path"
                 grep -Fxq -- "$current_device" <<< "$source_devices" || die "Einhängepunkt gehört nicht mehr zur Quelle: $mount_path"
                 printf 'Hänge aus: %s\n' "$mount_path"
                 umount -- "$mount_path" || die "Aushängen fehlgeschlagen: $mount_path. Bereits ausgehängte Dateisysteme bleiben ausgehängt."

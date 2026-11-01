@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Tkinter und virtuellen Bildschirm installieren
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: Tkinter, pv und virtuellen Bildschirm installieren
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb pv
       - name: Bash-Syntax und CLI-Hilfe prüfen
         run: |
           bash -n disk-image.sh

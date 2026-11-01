@@ -1,6 +1,9 @@
 """Fortschrittsdaten aus Map-Datei und Protokoll ohne Datenträger prüfen."""
 
 import tempfile
+import json
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -8,6 +11,20 @@ from disk_image_progress import archive_percent, rescued_percent
 
 
 class ProgressTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("pv"), "pv ist lokal nicht installiert")
+    def test_pv_emits_machine_readable_bytes_and_rate(self):
+        result = subprocess.run(
+            ["pv", "-n", "-s", "4", "-F",
+             '@@DISK_IMAGE_PROGRESS {"kind":"read","bytes":%b,"rate":%r}'],
+            input=b"abcd", capture_output=True, check=True,
+        )
+        lines = [line for line in result.stderr.decode().splitlines()
+                 if line.startswith("@@DISK_IMAGE_PROGRESS ")]
+        self.assertTrue(lines, result.stderr)
+        payload = json.loads(lines[-1].removeprefix("@@DISK_IMAGE_PROGRESS "))
+        self.assertEqual(payload["bytes"], 4)
+        self.assertGreaterEqual(payload["rate"], 0)
+
     def test_ddrescue_map_counts_only_rescued_ranges(self):
         with tempfile.TemporaryDirectory() as directory:
             mapfile = Path(directory) / "image.map"

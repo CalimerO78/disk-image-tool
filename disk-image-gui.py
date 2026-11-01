@@ -196,6 +196,7 @@ class App(tk.Tk):
         self.source_size = 0
         self.read_rate: float | None = None
         self.write_rate: float | None = None
+        self.dd_monitor_active = False
         self.last_bytes: dict[str, tuple[float, float]] = {}
         self.devices: dict[str, dict] = {}
 
@@ -897,6 +898,7 @@ class App(tk.Tk):
         self.status.set("Sicherung läuft …")
         self.source_size = 0
         self.read_rate = self.write_rate = None
+        self.dd_monitor_active = False
         self.last_bytes.clear()
         self.progress_label.set("Vorbereitung · Fortschritt: —")
         self.speed_label.set("Lesen: —   ·   Schreiben: —")
@@ -1008,9 +1010,12 @@ class App(tk.Tk):
 
         kind = data.get("kind")
         phase = {"read": "Quelle lesen", "write": "Abbild schreiben",
+                 "dd": "Quelle lesen und Abbild schreiben",
                  "verify": "Inhalt prüfen", "ddrescue": "Daten retten",
                  "fsarchiver": "Partition archivieren"}.get(kind, "Sicherung")
         percent = data.get("percent")
+        if kind in {"read", "write"} and self.dd_monitor_active:
+            return
         if kind in {"read", "verify"}:
             if self.source_size > 0 and isinstance(data.get("bytes"), (int, float)):
                 percent = 100 * data["bytes"] / self.source_size
@@ -1019,7 +1024,9 @@ class App(tk.Tk):
                 self.write_rate = None
         elif kind == "write":
             self.write_rate = self._rate_from_bytes(kind, data.get("bytes"))
-        elif kind in {"ddrescue", "fsarchiver"}:
+        elif kind in {"dd", "ddrescue", "fsarchiver"}:
+            if kind == "dd" and isinstance(data.get("read_bps"), (int, float)):
+                self.dd_monitor_active = True
             self.read_rate = data.get("read_bps") if isinstance(data.get("read_bps"), (int, float)) else None
             self.write_rate = data.get("write_bps") if isinstance(data.get("write_bps"), (int, float)) else None
         if isinstance(percent, (int, float)):

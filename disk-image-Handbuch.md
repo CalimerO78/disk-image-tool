@@ -319,7 +319,9 @@ root Besitzer. Manche Ziel-Dateisysteme unterstützen Unix-Eigentümer und
 Rechte nicht; das Skript zeigt dann eine Warnung. Bereits vorhandene
 Dateien aus älteren Sicherungen ändert ein Update nicht rückwirkend.
 
-Bei `dd` misst `pv` den gelesenen Datenstrom und die geschriebene Datei.
+Bei `dd` liefert `pv` Bytezähler; zusätzlich misst die GUI das Lesen am
+`dd`-Prozess und das Schreiben an der wachsenden Abbilddatei. Dadurch bleibt
+die Leserate sichtbar, falls `pv` sie nicht regelmäßig meldet.
 Bei `ddrescue` wird der Anteil erfolgreich geretteter Bereiche aus der
 Map-Datei berechnet. Bei `fsarchiver` erscheint ein Prozentwert nur, wenn
 das Werkzeug ihn meldet. Die Raten bei `ddrescue` und `fsarchiver` stammen

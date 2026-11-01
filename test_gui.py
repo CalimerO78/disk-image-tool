@@ -160,6 +160,18 @@ class CommandTests(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_dd_monitor_keeps_read_rate_visible(self):
+        app = gui.App()
+        try:
+            app._show_progress({"kind": "dd", "percent": 40,
+                                "read_bps": 1048576, "write_bps": 2097152})
+            self.assertIn("Lesen: 1.0 MiB/s", app.speed_label.get())
+            self.assertIn("Schreiben: 2.0 MiB/s", app.speed_label.get())
+            app._show_progress({"kind": "read", "bytes": 1})
+            self.assertIn("Lesen: 1.0 MiB/s", app.speed_label.get())
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -82,7 +82,8 @@ und den Start bestätigen. Die Administrator-Abfrage erscheint erst beim Start.
 Die Quelle wird kurz vor dem eigentlichen Lesen im Skript erneut geprüft.
 
 Die GUI zeigt, soweit messbar, den Fortschritt in Prozent und die Lese- und
-Schreibrate in MiB/s. Bei `dd` stammen die Werte aus dem laufenden Datenstrom.
+Schreibrate in MiB/s. Bei `dd` wird die Leserate zusätzlich am laufenden
+`dd`-Prozess und die Schreibrate an der wachsenden Abbilddatei gemessen.
 Bei `ddrescue` kommt der Prozentwert aus der Map-Datei; bei `fsarchiver` wird
 er nur angezeigt, wenn das Programm ihn ausdrücklich meldet. Die Raten dieser
 beiden Werkzeuge stammen aus den logischen Prozess-Ein-/Ausgaben und sind keine

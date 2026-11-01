@@ -2,16 +2,51 @@
 
 import tempfile
 import json
+import os
+import signal
 import shutil
 import subprocess
+import sys
+import threading
 import time
 import unittest
 from pathlib import Path
 
-from disk_image_progress import archive_percent, rescued_percent
+from disk_image_progress import archive_percent, monitor_dd, rescued_percent
 
 
 class ProgressTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "linux" and shutil.which("pv"),
+                         "Linux und pv sind nötig")
+    def test_dd_monitor_reports_both_rates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "image.img"
+            process = subprocess.Popen(
+                ["bash", "-c", 'dd if=/dev/zero bs=1M count=8 status=none | pv -q -L 1M > "$1"',
+                 "test", str(image)],
+                start_new_session=True,
+            )
+            stop = threading.Event()
+            events: list[str] = []
+            thread = threading.Thread(target=monitor_dd,
+                                      args=(process.pid, {"image": str(image),
+                                                          "size": 8 * 1048576}, stop,
+                                            events.append))
+            thread.start()
+            try:
+                time.sleep(4)
+            finally:
+                stop.set()
+                thread.join(timeout=3)
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=5)
+            payloads = [json.loads(item.removeprefix("@@DISK_IMAGE_PROGRESS "))
+                        for item in events]
+            self.assertTrue(any(isinstance(item.get("read_bps"), (int, float)) and
+                                item["read_bps"] > 0 for item in payloads), payloads)
+            self.assertTrue(any(isinstance(item.get("write_bps"), (int, float)) and
+                                item["write_bps"] > 0 for item in payloads), payloads)
+
     @unittest.skipUnless(shutil.which("pv") and shutil.which("bash"), "pv und Bash sind nötig")
     def test_gui_pipe_emits_labeled_progress(self):
         helper = Path(__file__).with_name("disk-image-pv.sh")

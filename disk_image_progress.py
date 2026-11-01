@@ -1,7 +1,7 @@
-"""Messwerte für ddrescue und fsarchiver aus laufenden Linux-Prozessen.
+"""Messwerte für Sicherungsprogramme aus laufenden Linux-Prozessen.
 
-Die Anzeige trennt echte Werte von unbekannten Werten. Der dd-Datenstrom wird
-im Bash-Skript direkt mit pv gemessen und hier nicht doppelt gezählt.
+Die Anzeige trennt echte Werte von unbekannten Werten. Bei dd wird die
+Quell-Leserate zusätzlich am dd-Prozess gemessen, falls pv sie nicht liefert.
 """
 
 from __future__ import annotations
@@ -86,11 +86,61 @@ def worker_io(shell_pid: int, name: str) -> tuple[int, int, int] | None:
     return None
 
 
+def monitor_dd(shell_pid: int, meta: dict, stop: threading.Event, emit) -> None:
+    """Lesen am dd-Prozess und Schreiben an der wachsenden Datei messen."""
+
+    previous: tuple[int, int, float] | None = None
+    last_read: int | None = None
+    last_write: tuple[int, float] | None = None
+    absent = 0
+    seen = False
+    image = Path(meta["image"])
+    size = int(meta["size"])
+    while not stop.wait(1):
+        current = worker_io(shell_pid, "dd")
+        now = time.monotonic()
+        if current is None:
+            if seen:
+                absent += 1
+        else:
+            seen = True
+            absent = 0
+        if seen and current is None and absent >= 2:
+            return
+        read_rate = None
+        if current:
+            last_read = current[1]
+            if previous and previous[0] == current[0]:
+                read_rate = max(0.0, (current[1] - previous[1]) /
+                                max(0.001, now - previous[2]))
+            previous = (current[0], current[1], now)
+        try:
+            written = image.stat().st_size
+        except OSError:
+            written = None
+        write_rate = None
+        if written is not None:
+            if last_write:
+                write_rate = max(0.0, (written - last_write[0]) /
+                                 max(0.001, now - last_write[1]))
+            last_write = (written, now)
+        if current is None and written is None:
+            continue
+        percent = (round(min(100.0, 100.0 * last_read / size), 2)
+                   if last_read is not None and size > 0 else None)
+        payload = {"kind": "dd", "percent": percent,
+                   "read_bps": read_rate, "write_bps": write_rate}
+        emit("@@DISK_IMAGE_PROGRESS " + json.dumps(payload) + "\n")
+
+
 def monitor(shell_pid: int, meta: dict, stop: threading.Event,
             emit) -> None:
     """Einmal pro Sekunde Prozesserfassung und Prozentstand ausgeben."""
 
     engine = meta.get("engine")
+    if engine == "dd":
+        monitor_dd(shell_pid, meta, stop, emit)
+        return
     if engine not in {"ddrescue", "fsarchiver"}:
         return
     previous: tuple[int, int, int, float] | None = None
